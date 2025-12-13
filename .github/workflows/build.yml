@@ -1,23 +1,23 @@
-name: Build APK Stable
+name: Build APK Ultimate Fix
 on:
   push:
     branches: [ main ]
 
 jobs:
   build:
-    # 1. استخدام نسخة أوبونتو 22 المستقرة بدلاً من الحديثة جداً
     runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v4
 
-      # 2. استخدام جافا 11 (الحل السحري لمشاكل Android SDK القديم)
+      # 1. إعداد الجافا 11 (ضروري)
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '11'
 
+      # 2. تثبيت الأدوات (أضفنا autoconf-archive هنا)
       - name: Install Dependencies
         run: |
           sudo apt-get update
@@ -26,13 +26,13 @@ jobs:
             libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
             libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
             zlib1g-dev unzip zip \
-            libltdl-dev libffi-dev libssl-dev autoconf automake libtool pkg-config
+            libltdl-dev libffi-dev libssl-dev autoconf automake libtool pkg-config autoconf-archive
 
       - name: Install Buildozer
         run: |
           pip3 install --upgrade buildozer cython==0.29.33 virtualenv
 
-      # 3. تنظيف كامل قبل البدء
+      # 3. تنظيف شامل
       - name: Clean Build Environment
         run: |
           rm -rf .buildozer
