@@ -1,4 +1,4 @@
-name: Build APK Final v4
+name: Build APK Master Fix
 on:
   push:
     branches: [ main ]
@@ -8,17 +8,16 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      # 1. التحديث لنسخة Checkout v4
       - uses: actions/checkout@v4
 
-      # 2. إعداد الجافا 11 (الأكثر استقراراً)
+      # 1. العودة إلى Java 17 (لأن أدوات أندرويد الحديثة لا تعمل إلا بها)
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '11'
+          java-version: '17'
 
-      # 3. تثبيت الأدوات (شاملة autoconf-archive)
+      # 2. تثبيت المكتبات
       - name: Install Dependencies
         run: |
           sudo apt-get update
@@ -29,22 +28,23 @@ jobs:
             zlib1g-dev unzip zip \
             libltdl-dev libffi-dev libssl-dev autoconf automake libtool pkg-config autoconf-archive
 
-      - name: Install Buildozer
+      # 3. التغيير الجذري: تثبيت Buildozer من المصدر الرئيسي (Master)
+      # هذا يحل مشكلة الانهيار (Broken Pipe) التي واجهتك
+      - name: Install Buildozer Master
         run: |
-          pip3 install --upgrade buildozer cython==0.29.33 virtualenv
+          pip3 install --upgrade https://github.com/kivy/buildozer/archive/master.zip
+          pip3 install --upgrade cython==0.29.33 virtualenv
 
-      # 4. تنظيف شامل
-      - name: Clean Build Environment
+      - name: Clean Build
         run: |
-          rm -rf .buildozer
-          rm -rf bin
+          rm -rf .buildozer bin
 
-      # 5. البناء
+      # 4. البناء (سيقوم بتحميل SDK المتوافق تلقائياً)
       - name: Build APK
         run: |
           yes | buildozer android debug
 
-      # 6. الرفع باستخدام الإصدار الجديد v4 (حل مشكلة الخطأ الأخير)
+      # 5. الرفع
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
