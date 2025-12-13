@@ -1,31 +1,23 @@
-name: Build APK Final Fix
+name: Build APK Stable
 on:
   push:
     branches: [ main ]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # 1. استخدام نسخة أوبونتو 22 المستقرة بدلاً من الحديثة جداً
+    runs-on: ubuntu-22.04
 
     steps:
       - uses: actions/checkout@v4
 
-      # 1. هذه الخطوة الجديدة: ضبط الجافا 17 (الحل لمشكلة الفشل في النهاية)
+      # 2. استخدام جافا 11 (الحل السحري لمشاكل Android SDK القديم)
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '11'
 
-      # 2. تحرير المساحة
-      - name: Free Disk Space
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-
-      # 3. تثبيت الأدوات (بما في ذلك autoconf-archive)
       - name: Install Dependencies
         run: |
           sudo apt-get update
@@ -34,25 +26,24 @@ jobs:
             libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
             libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
             zlib1g-dev unzip zip \
-            libltdl-dev libffi-dev libssl-dev autoconf automake libtool pkg-config autoconf-archive
+            libltdl-dev libffi-dev libssl-dev autoconf automake libtool pkg-config
 
-      # 4. تثبيت Buildozer
       - name: Install Buildozer
         run: |
           pip3 install --upgrade buildozer cython==0.29.33 virtualenv
 
-      # 5. تنظيف أي مخلفات سابقة للتأكد من البناء النظيف
-      - name: Clean Build
+      # 3. تنظيف كامل قبل البدء
+      - name: Clean Build Environment
         run: |
           rm -rf .buildozer
           rm -rf bin
 
-      # 6. البناء مع عرض التفاصيل (Verbose) لمعرفة السبب لو فشل
+      # 4. البناء
       - name: Build APK
         run: |
-          yes | buildozer -v android debug
+          yes | buildozer android debug
 
-      # 7. الرفع
+      # 5. الرفع
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
