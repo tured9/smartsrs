@@ -6,18 +6,12 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 version = 0.1
 requirements = python3,kivy
-
-# إعدادات الشاشة
 orientation = portrait
 fullscreen = 0
-
-# إعدادات أندرويد (مهمة جداً للدوكر)
 android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WAKE_LOCK,FOREGROUND_SERVICE
 android.api = 31
 android.minapi = 21
 android.accept_sdk_license = True
-
-# بناء لمعالج واحد فقط لضمان النجاح والسرعة
 android.archs = arm64-v8a
 
 [buildozer]
