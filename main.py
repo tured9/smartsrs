@@ -8,6 +8,12 @@ from kivy.clock import Clock
 from kivy.utils import platform
 from kivy.core.window import Window
 from kivy.graphics import Color, Rectangle
+
+# استدعاء مكتبات أندرويد (للتحكم في الطاقة)
+if platform == 'android':
+    from jnius import autoclass
+    from android.permissions import request_permissions, Permission
+
 import time
 import os
 
@@ -23,13 +29,14 @@ INTERVALS = [10, 60, 300, 1800, 3600]
 class SRSPlayer(App):
     def build(self):
         Window.clearcolor = COLOR_BG
-        
-        # --- طلب الأذونات تلقائياً عند البدء ---
+        self.wakelock = None # متغير لحفظ قفل الاستيقاظ
+
+        # طلب الأذونات عند البدء
         if platform == 'android':
-            from android.permissions import request_permissions, Permission
             request_permissions([
                 Permission.READ_EXTERNAL_STORAGE,
-                Permission.WRITE_EXTERNAL_STORAGE
+                Permission.WRITE_EXTERNAL_STORAGE,
+                Permission.WAKE_LOCK
             ])
 
         self.sound = None
@@ -37,27 +44,25 @@ class SRSPlayer(App):
         self.next_time = 0
         self.is_running = False
 
+        # التصميم
         layout = BoxLayout(orientation='vertical', padding=20, spacing=15)
         
         self.lbl_title = Label(text="Smart Review System", size_hint=(1, 0.1), font_size='24sp', bold=True, color=COLOR_BTN_START)
         layout.add_widget(self.lbl_title)
 
-        self.lbl_info = Label(text="Select an audio file...", size_hint=(1, 0.1), font_size='16sp', color=COLOR_TEXT)
+        self.lbl_info = Label(text="Select audio & press START", size_hint=(1, 0.1), font_size='16sp', color=COLOR_TEXT)
         layout.add_widget(self.lbl_info)
 
-        # مستعرض الملفات
+        # المستعرض
         chooser_layout = BoxLayout(size_hint=(1, 0.6))
         with chooser_layout.canvas.before:
             Color(*COLOR_ACCENT)
             Rectangle(pos=chooser_layout.pos, size=chooser_layout.size)
         
-        # المسار الافتراضي
         start_path = "/storage/emulated/0/"
-        
-        # فلتر محسن يقبل الحروف الكبيرة والصغيرة
         self.chooser = FileChooserIconView(
             path=start_path, 
-            filters=[lambda folder, filename: filename.lower().endswith(('.mp3', '.wav', '.ogg', '.m4a', '.wma'))]
+            filters=[lambda folder, filename: filename.lower().endswith(('.mp3', '.wav', '.ogg', '.m4a'))]
         )
         layout.add_widget(self.chooser)
 
@@ -67,6 +72,39 @@ class SRSPlayer(App):
 
         Clock.schedule_interval(self.background_loop, 1)
         return layout
+
+    # ---------------------------------------------------------
+    # هذا هو الجزء السحري: منع التطبيق من التوقف عند الخروج
+    # ---------------------------------------------------------
+    def on_pause(self):
+        # إرجاع True يعني: "لا تقتلني، سأعمل في الخلفية"
+        return True
+
+    def on_resume(self):
+        # عند العودة للتطبيق
+        return True
+    # ---------------------------------------------------------
+
+    def acquire_wakelock(self):
+        """إجبار الهاتف على البقاء مستيقظاً"""
+        if platform == 'android':
+            try:
+                PythonActivity = autoclass('org.kivy.android.PythonActivity')
+                activity = PythonActivity.mActivity
+                Context = autoclass('android.content.Context')
+                PowerManager = autoclass('android.os.PowerManager')
+                
+                pm = activity.getSystemService(Context.POWER_SERVICE)
+                self.wakelock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, 'SmartSRS:Tag')
+                self.wakelock.acquire()
+            except Exception as e:
+                print(f"Wakelock Error: {e}")
+
+    def release_wakelock(self):
+        """تحرير الهاتف عند الإيقاف"""
+        if self.wakelock and self.wakelock.isHeld():
+            self.wakelock.release()
+            self.wakelock = None
 
     def toggle_system(self, instance):
         if not self.is_running: self.start_process()
@@ -82,6 +120,10 @@ class SRSPlayer(App):
                     self.queue_index = 0
                     self.btn_action.text = "STOP SESSION"
                     self.btn_action.background_color = COLOR_BTN_STOP
+                    
+                    # تفعيل قفل الاستيقاظ
+                    self.acquire_wakelock()
+                    
                     self.schedule_next_play()
                 else:
                     self.lbl_info.text = "Error: Invalid Audio File!"
@@ -94,6 +136,10 @@ class SRSPlayer(App):
         self.is_running = False
         self.next_time = 0
         if self.sound and self.sound.state == 'play': self.sound.stop()
+        
+        # تحرير القفل
+        self.release_wakelock()
+        
         self.btn_action.text = "START SESSION"
         self.btn_action.background_color = COLOR_BTN_START
         self.lbl_info.text = "Stopped."
