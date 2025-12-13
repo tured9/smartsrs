@@ -1,23 +1,52 @@
-name: Build with Docker
-on: [push]
+name: Build APK Final v4
+on:
+  push:
+    branches: [ main ]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v2
+      # 1. التحديث لنسخة Checkout v4
+      - uses: actions/checkout@v4
 
-      - name: Build APK using Kivy Docker
-        # هذا هو السطر السحري: نستخدم أداة جاهزة بدلاً من التثبيت اليدوي
-        uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
+      # 2. إعداد الجافا 11 (الأكثر استقراراً)
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
-          command: buildozer android debug
-          buildozer_version: stable
+          distribution: 'temurin'
+          java-version: '11'
 
+      # 3. تثبيت الأدوات (شاملة autoconf-archive)
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-pip build-essential git python3-dev \
+            libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
+            libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
+            zlib1g-dev unzip zip \
+            libltdl-dev libffi-dev libssl-dev autoconf automake libtool pkg-config autoconf-archive
+
+      - name: Install Buildozer
+        run: |
+          pip3 install --upgrade buildozer cython==0.29.33 virtualenv
+
+      # 4. تنظيف شامل
+      - name: Clean Build Environment
+        run: |
+          rm -rf .buildozer
+          rm -rf bin
+
+      # 5. البناء
+      - name: Build APK
+        run: |
+          yes | buildozer android debug
+
+      # 6. الرفع باستخدام الإصدار الجديد v4 (حل مشكلة الخطأ الأخير)
       - name: Upload APK
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           name: SmartSRS-App
           path: bin/*.apk
