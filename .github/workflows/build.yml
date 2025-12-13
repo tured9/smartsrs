@@ -1,20 +1,47 @@
-name: Build APK
-on: [push]
+name: Build APK Manually
+on:
+  push:
+    branches: [ main ]
+
 jobs:
   build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      
-      - name: Build with Buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
-        with:
-          command: buildozer android debug
-          buildozer_version: master
+    runs-on: ubuntu-22.04
 
+    steps:
+      - uses: actions/checkout@v4
+
+      # 1. تحرير مساحة في السيرفر لضمان عدم امتلاء الذاكرة
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+
+      # 2. تثبيت الأدوات الضرورية (نفس أدوات Colab)
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-pip build-essential git python3-dev \
+            libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
+            libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
+            zlib1g-dev openjdk-17-jdk unzip zip \
+            libltdl-dev libffi-dev libssl-dev autoconf automake libtool pkg-config
+
+      # 3. تثبيت Buildozer
+      - name: Install Buildozer
+        run: |
+          pip3 install --upgrade buildozer cython==0.29.33 virtualenv
+
+      # 4. بدء البناء
+      - name: Build APK
+        run: |
+          yes | buildozer android debug
+
+      # 5. رفع الملف النهائي لك
       - name: Upload APK
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
-          name: package
+          name: SmartSRS-App
           path: bin/*.apk
