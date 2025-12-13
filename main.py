@@ -8,12 +8,6 @@ from kivy.clock import Clock
 from kivy.utils import platform
 from kivy.core.window import Window
 from kivy.graphics import Color, Rectangle
-
-# استدعاء مكتبات أندرويد (للتحكم في الطاقة)
-if platform == 'android':
-    from jnius import autoclass
-    from android.permissions import request_permissions, Permission
-
 import time
 import os
 
@@ -29,22 +23,25 @@ INTERVALS = [10, 60, 300, 1800, 3600]
 class SRSPlayer(App):
     def build(self):
         Window.clearcolor = COLOR_BG
-        self.wakelock = None # متغير لحفظ قفل الاستيقاظ
+        self.wakelock = None
 
-        # طلب الأذونات عند البدء
+        # محاولة طلب الأذونات بأمان
         if platform == 'android':
-            request_permissions([
-                Permission.READ_EXTERNAL_STORAGE,
-                Permission.WRITE_EXTERNAL_STORAGE,
-                Permission.WAKE_LOCK
-            ])
+            try:
+                from android.permissions import request_permissions, Permission
+                request_permissions([
+                    Permission.READ_EXTERNAL_STORAGE,
+                    Permission.WRITE_EXTERNAL_STORAGE,
+                    Permission.WAKE_LOCK
+                ])
+            except Exception as e:
+                print(f"Permission Error: {e}")
 
         self.sound = None
         self.queue_index = 0
         self.next_time = 0
         self.is_running = False
 
-        # التصميم
         layout = BoxLayout(orientation='vertical', padding=20, spacing=15)
         
         self.lbl_title = Label(text="Smart Review System", size_hint=(1, 0.1), font_size='24sp', bold=True, color=COLOR_BTN_START)
@@ -53,7 +50,7 @@ class SRSPlayer(App):
         self.lbl_info = Label(text="Select audio & press START", size_hint=(1, 0.1), font_size='16sp', color=COLOR_TEXT)
         layout.add_widget(self.lbl_info)
 
-        # المستعرض
+        # مستعرض الملفات
         chooser_layout = BoxLayout(size_hint=(1, 0.6))
         with chooser_layout.canvas.before:
             Color(*COLOR_ACCENT)
@@ -73,22 +70,17 @@ class SRSPlayer(App):
         Clock.schedule_interval(self.background_loop, 1)
         return layout
 
-    # ---------------------------------------------------------
-    # هذا هو الجزء السحري: منع التطبيق من التوقف عند الخروج
-    # ---------------------------------------------------------
+    # منع الإغلاق عند الخروج
     def on_pause(self):
-        # إرجاع True يعني: "لا تقتلني، سأعمل في الخلفية"
         return True
-
     def on_resume(self):
-        # عند العودة للتطبيق
         return True
-    # ---------------------------------------------------------
 
     def acquire_wakelock(self):
-        """إجبار الهاتف على البقاء مستيقظاً"""
+        """كود البطارية الآمن (لن يسبب كراش)"""
         if platform == 'android':
             try:
+                from jnius import autoclass
                 PythonActivity = autoclass('org.kivy.android.PythonActivity')
                 activity = PythonActivity.mActivity
                 Context = autoclass('android.content.Context')
@@ -98,13 +90,16 @@ class SRSPlayer(App):
                 self.wakelock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, 'SmartSRS:Tag')
                 self.wakelock.acquire()
             except Exception as e:
-                print(f"Wakelock Error: {e}")
+                # إذا فشل، لن يغلق التطبيق، سيكمل العمل فقط
+                print(f"WakeLock Failed (App will run normally): {e}")
 
     def release_wakelock(self):
-        """تحرير الهاتف عند الإيقاف"""
-        if self.wakelock and self.wakelock.isHeld():
-            self.wakelock.release()
-            self.wakelock = None
+        try:
+            if self.wakelock and self.wakelock.isHeld():
+                self.wakelock.release()
+                self.wakelock = None
+        except:
+            pass
 
     def toggle_system(self, instance):
         if not self.is_running: self.start_process()
@@ -121,7 +116,7 @@ class SRSPlayer(App):
                     self.btn_action.text = "STOP SESSION"
                     self.btn_action.background_color = COLOR_BTN_STOP
                     
-                    # تفعيل قفل الاستيقاظ
+                    # محاولة تفعيل البطارية
                     self.acquire_wakelock()
                     
                     self.schedule_next_play()
@@ -137,7 +132,6 @@ class SRSPlayer(App):
         self.next_time = 0
         if self.sound and self.sound.state == 'play': self.sound.stop()
         
-        # تحرير القفل
         self.release_wakelock()
         
         self.btn_action.text = "START SESSION"
