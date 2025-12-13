@@ -1,16 +1,23 @@
-name: Build APK Manually
+name: Build APK Final Fix
 on:
   push:
     branches: [ main ]
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      # 1. تحرير مساحة في السيرفر لضمان عدم امتلاء الذاكرة
+      # 1. هذه الخطوة الجديدة: ضبط الجافا 17 (الحل لمشكلة الفشل في النهاية)
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # 2. تحرير المساحة
       - name: Free Disk Space
         run: |
           sudo rm -rf /usr/share/dotnet
@@ -18,7 +25,7 @@ jobs:
           sudo rm -rf "/usr/local/share/boost"
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
 
-      # 2. تثبيت الأدوات الضرورية (نفس أدوات Colab)
+      # 3. تثبيت الأدوات (بما في ذلك autoconf-archive)
       - name: Install Dependencies
         run: |
           sudo apt-get update
@@ -26,20 +33,26 @@ jobs:
             python3-pip build-essential git python3-dev \
             libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
             libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
-            zlib1g-dev openjdk-17-jdk unzip zip \
-            libltdl-dev libffi-dev libssl-dev autoconf automake libtool pkg-config
+            zlib1g-dev unzip zip \
+            libltdl-dev libffi-dev libssl-dev autoconf automake libtool pkg-config autoconf-archive
 
-      # 3. تثبيت Buildozer
+      # 4. تثبيت Buildozer
       - name: Install Buildozer
         run: |
           pip3 install --upgrade buildozer cython==0.29.33 virtualenv
 
-      # 4. بدء البناء
+      # 5. تنظيف أي مخلفات سابقة للتأكد من البناء النظيف
+      - name: Clean Build
+        run: |
+          rm -rf .buildozer
+          rm -rf bin
+
+      # 6. البناء مع عرض التفاصيل (Verbose) لمعرفة السبب لو فشل
       - name: Build APK
         run: |
-          yes | buildozer android debug
+          yes | buildozer -v android debug
 
-      # 5. رفع الملف النهائي لك
+      # 7. الرفع
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
