@@ -3,18 +3,17 @@ from jnius import autoclass, cast
 from kivy.utils import platform
 import os
 
-# الفترات الزمنية
 INTERVALS = [10, 60, 300, 1800, 3600]
 
-def play_audio_professional(file_path):
+def play_audio_adhan_style(file_path):
     """
-    طريقة الخبراء:
-    1. طلب التركيز الصوتي (لخفض صوت التطبيقات الأخرى).
-    2. رفع صوت المنبه للأعلى.
-    3. التشغيل عبر قناة المنبه.
+    تشغيل الصوت بنمط الأذان (Adhan Mode):
+    1. اختراق وضع الصامت.
+    2. إيقاف التطبيقات الأخرى (YouTube/Facebook) تماماً وليس خفضها.
+    3. استخدام قناة التنبيهات القصوى.
     """
     try:
-        # استيراد كلاسات أندرويد الضرورية
+        # استدعاء مكتبات النظام
         PythonService = autoclass('org.kivy.android.PythonService')
         mService = PythonService.mService
         Context = autoclass('android.content.Context')
@@ -23,26 +22,25 @@ def play_audio_professional(file_path):
         AudioAttributes = autoclass('android.media.AudioAttributes')
         Builder = autoclass('android.media.AudioAttributes$Builder')
 
-        # 1. الحصول على مدير الصوت
+        # 1. السيطرة على الصوت (Audio Focus - Gain Transient)
+        # AUDIOFOCUS_GAIN_TRANSIENT = 2 (هذا يوقف يوتيوب مؤقتاً ولا يخفضه فقط)
         am = cast(AudioManager, mService.getSystemService(Context.AUDIO_SERVICE))
+        am.requestAudioFocus(None, 4, 2) # Stream Alarm (4), Focus Gain (2)
 
-        # 2. طلب التركيز الصوتي (Audio Focus)
-        # AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK = 3
-        # هذا يعني: اخفض صوت التطبيقات الأخرى مؤقتاً وشغل صوتي
-        result = am.requestAudioFocus(None, 3, 3) # Stream Music (3), Gain Transient Duck (3)
+        # 2. رفع صوت المنبه للأعلى (Force Max Volume)
+        max_vol = am.getStreamMaxVolume(4) # 4 = STREAM_ALARM
+        am.setStreamVolume(4, max_vol, 0)
 
-        # 3. التأكد من أن صوت "المنبه" مرتفع (Max Volume)
-        # STREAM_ALARM = 4
-        max_vol = am.getStreamMaxVolume(4)
-        current_vol = am.getStreamVolume(4)
-        # رفع الصوت إلى 80% على الأقل إذا كان منخفضاً
-        target_vol = int(max_vol * 0.8)
-        if current_vol < target_vol:
-            am.setStreamVolume(4, target_vol, 0)
-
-        # 4. إعداد المشغل كمنبه (Alarm) ليخترق وضع الصامت
-        # USAGE_ALARM = 4, CONTENT_TYPE_SONIFICATION = 4
-        attributes = Builder().setUsage(4).setContentType(4).build()
+        # 3. إعداد خصائص الصوت (السر في Flag 1)
+        # USAGE_ALARM = 4
+        # CONTENT_TYPE_SONIFICATION = 4
+        # FLAG_AUDIBILITY_ENFORCED = 1 (هذا هو سر تطبيقات الأذان!)
+        # هذا الفلاج يجبر الصوت على الخروج حتى لو كان الهاتف صامتاً
+        attributes = Builder() \
+            .setUsage(4) \
+            .setContentType(4) \
+            .setFlags(1) \
+            .build()
 
         player = MediaPlayer()
         player.setAudioAttributes(attributes)
@@ -50,7 +48,7 @@ def play_audio_professional(file_path):
         player.prepare()
         player.start()
         
-        # الانتظار حتى ينتهي
+        # انتظار انتهاء الصوت
         duration = player.getDuration() / 1000
         time_end = time() + duration + 1
         while time() < time_end:
@@ -58,12 +56,12 @@ def play_audio_professional(file_path):
         
         player.release()
         
-        # 5. التخلي عن التركيز الصوتي (إعادة الصوت للتطبيقات الأخرى)
+        # إرجاع الصوت للتطبيقات الأخرى
         am.abandonAudioFocus(None)
-        
         return True
+
     except Exception as e:
-        print(f"Professional Play Error: {e}")
+        print(f"Adhan Mode Error: {e}")
         return False
 
 def run_service():
@@ -72,28 +70,26 @@ def run_service():
         mService = PythonService.mService
         Context = autoclass('android.content.Context')
         
-        # --- القفل القوي (WakeLock) ---
+        # --- القفل القوي جداً (WakeLock) ---
         PowerManager = autoclass('android.os.PowerManager')
         pm = mService.getSystemService(Context.POWER_SERVICE)
         # PARTIAL_WAKE_LOCK = 1
-        wakelock = pm.newWakeLock(1, "SmartSRS:ProLock")
+        wakelock = pm.newWakeLock(1, "SmartSRS:AdhanLock")
         wakelock.acquire()
-        # ------------------------------
 
-        # الإشعار الدائم (Foreground)
+        # إشعار دائم
         NotificationBuilder = autoclass('android.app.Notification$Builder')
         NotificationChannel = autoclass('android.app.NotificationChannel')
         NotificationManager = autoclass('android.app.NotificationManager')
         
-        channel_id = "SmartSRS_Pro"
+        channel_id = "SmartSRS_Adhan"
         nm = mService.getSystemService(Context.NOTIFICATION_SERVICE)
-        # IMPORTANCE_LOW = 2
-        chan = NotificationChannel(channel_id, "SmartSRS Service", 2)
+        chan = NotificationChannel(channel_id, "SmartSRS Service", 4) # Importance High
         nm.createNotificationChannel(chan)
         
         notification = NotificationBuilder(mService, channel_id) \
-            .setContentTitle("Smart SRS Running") \
-            .setContentText("Background Audio Active") \
+            .setContentTitle("Smart SRS Active") \
+            .setContentText("Mode: Adhan/Alarm Priority") \
             .setSmallIcon(17301659) \
             .build()
             
@@ -121,19 +117,16 @@ def run_service():
                 elif content and content != loaded_file:
                     loaded_file = content
                     current_step = 0
-                    # تجربة الصوت فوراً
-                    play_audio_professional(loaded_file)
+                    play_audio_adhan_style(loaded_file)
                     next_play_time = time() + INTERVALS[0]
-                    
                     if 'wakelock' in locals() and not wakelock.isHeld():
                         wakelock.acquire()
             except:
                 pass
 
         if loaded_file and next_play_time > 0:
-            # هامش دقة 1 ثانية
             if time() >= next_play_time:
-                played = play_audio_professional(loaded_file)
+                played = play_audio_adhan_style(loaded_file)
                 if played:
                     current_step += 1
                     if current_step < len(INTERVALS):
