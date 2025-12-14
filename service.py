@@ -5,15 +5,13 @@ import os
 
 INTERVALS = [10, 60, 300, 1800, 3600]
 
-def play_audio_adhan_style(file_path):
+def play_audio_smart_mix(file_path):
     """
-    تشغيل الصوت بنمط الأذان (Adhan Mode):
-    1. اختراق وضع الصامت.
-    2. إيقاف التطبيقات الأخرى (YouTube/Facebook) تماماً وليس خفضها.
-    3. استخدام قناة التنبيهات القصوى.
+    التشغيل الذكي (Smart Mix):
+    - يحترم إعدادات صوت الهاتف الحالية.
+    - يقوم بخفض صوت التطبيقات الأخرى مؤقتاً (Ducking) بدلاً من قطعها.
     """
     try:
-        # استدعاء مكتبات النظام
         PythonService = autoclass('org.kivy.android.PythonService')
         mService = PythonService.mService
         Context = autoclass('android.content.Context')
@@ -22,33 +20,27 @@ def play_audio_adhan_style(file_path):
         AudioAttributes = autoclass('android.media.AudioAttributes')
         Builder = autoclass('android.media.AudioAttributes$Builder')
 
-        # 1. السيطرة على الصوت (Audio Focus - Gain Transient)
-        # AUDIOFOCUS_GAIN_TRANSIENT = 2 (هذا يوقف يوتيوب مؤقتاً ولا يخفضه فقط)
+        # 1. إدارة التركيز الصوتي (Audio Focus)
         am = cast(AudioManager, mService.getSystemService(Context.AUDIO_SERVICE))
-        am.requestAudioFocus(None, 4, 2) # Stream Alarm (4), Focus Gain (2)
+        
+        # AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK = 3
+        # هذا الخيار يقول للنظام: "اخفض صوت يوتيوب قليلاً، لا توقفه، ودعني أتكلم"
+        am.requestAudioFocus(None, 3, 3) 
 
-        # 2. رفع صوت المنبه للأعلى (Force Max Volume)
-        max_vol = am.getStreamMaxVolume(4) # 4 = STREAM_ALARM
-        am.setStreamVolume(4, max_vol, 0)
-
-        # 3. إعداد خصائص الصوت (السر في Flag 1)
-        # USAGE_ALARM = 4
-        # CONTENT_TYPE_SONIFICATION = 4
-        # FLAG_AUDIBILITY_ENFORCED = 1 (هذا هو سر تطبيقات الأذان!)
-        # هذا الفلاج يجبر الصوت على الخروج حتى لو كان الهاتف صامتاً
-        attributes = Builder() \
-            .setUsage(4) \
-            .setContentType(4) \
-            .setFlags(1) \
-            .build()
+        # 2. إعداد المشغل كـ "وسائط" (Media) عادية
+        # USAGE_MEDIA = 1
+        # CONTENT_TYPE_MUSIC = 2
+        attributes = Builder().setUsage(1).setContentType(2).build()
 
         player = MediaPlayer()
         player.setAudioAttributes(attributes)
         player.setDataSource(file_path)
         player.prepare()
+        
+        # لا نضع setVolume هنا، نترك التحكم لأزرار الهاتف
         player.start()
         
-        # انتظار انتهاء الصوت
+        # انتظار انتهاء المقطع
         duration = player.getDuration() / 1000
         time_end = time() + duration + 1
         while time() < time_end:
@@ -56,12 +48,12 @@ def play_audio_adhan_style(file_path):
         
         player.release()
         
-        # إرجاع الصوت للتطبيقات الأخرى
+        # إعادة الصوت الطبيعي للتطبيقات الأخرى
         am.abandonAudioFocus(None)
+        
         return True
-
     except Exception as e:
-        print(f"Adhan Mode Error: {e}")
+        print(f"Smart Play Error: {e}")
         return False
 
 def run_service():
@@ -69,27 +61,27 @@ def run_service():
         PythonService = autoclass('org.kivy.android.PythonService')
         mService = PythonService.mService
         Context = autoclass('android.content.Context')
-        
-        # --- القفل القوي جداً (WakeLock) ---
         PowerManager = autoclass('android.os.PowerManager')
+
+        # --- WakeLock (لمنع النظام من النوم) ---
         pm = mService.getSystemService(Context.POWER_SERVICE)
         # PARTIAL_WAKE_LOCK = 1
-        wakelock = pm.newWakeLock(1, "SmartSRS:AdhanLock")
+        wakelock = pm.newWakeLock(1, "SmartSRS:SmartLock")
         wakelock.acquire()
 
-        # إشعار دائم
+        # إعداد الإشعار (مهم جداً للبقاء في الخلفية)
         NotificationBuilder = autoclass('android.app.Notification$Builder')
         NotificationChannel = autoclass('android.app.NotificationChannel')
         NotificationManager = autoclass('android.app.NotificationManager')
         
-        channel_id = "SmartSRS_Adhan"
+        channel_id = "SmartSRS_Mix"
         nm = mService.getSystemService(Context.NOTIFICATION_SERVICE)
-        chan = NotificationChannel(channel_id, "SmartSRS Service", 4) # Importance High
+        chan = NotificationChannel(channel_id, "SmartSRS Service", 2)
         nm.createNotificationChannel(chan)
         
         notification = NotificationBuilder(mService, channel_id) \
-            .setContentTitle("Smart SRS Active") \
-            .setContentText("Mode: Adhan/Alarm Priority") \
+            .setContentTitle("Smart SRS Running") \
+            .setContentText("Background Review Active") \
             .setSmallIcon(17301659) \
             .build()
             
@@ -102,7 +94,9 @@ def run_service():
     next_play_time = 0
     current_step = 0
 
+    # حلقة العمل الرئيسية
     while True:
+        # قراءة الأوامر (محمية بـ try لمنع التوقف)
         if os.path.exists(config_path):
             try:
                 with open(config_path, "r") as f:
@@ -111,22 +105,26 @@ def run_service():
                 if content == "STOP":
                     loaded_file = None
                     os.remove(config_path)
+                    # تحرير القفل عند التوقف الكامل
                     if 'wakelock' in locals() and wakelock.isHeld():
                         wakelock.release()
                 
                 elif content and content != loaded_file:
                     loaded_file = content
                     current_step = 0
-                    play_audio_adhan_style(loaded_file)
+                    # تجربة فورية
+                    play_audio_smart_mix(loaded_file)
                     next_play_time = time() + INTERVALS[0]
+                    
                     if 'wakelock' in locals() and not wakelock.isHeld():
                         wakelock.acquire()
             except:
                 pass
 
+        # التحقق من الوقت
         if loaded_file and next_play_time > 0:
             if time() >= next_play_time:
-                played = play_audio_adhan_style(loaded_file)
+                played = play_audio_smart_mix(loaded_file)
                 if played:
                     current_step += 1
                     if current_step < len(INTERVALS):
@@ -137,6 +135,7 @@ def run_service():
                         if 'wakelock' in locals() and wakelock.isHeld():
                             wakelock.release()
 
+        # راحة للمعالج
         sleep(1)
 
 if __name__ == '__main__':
