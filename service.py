@@ -1,135 +1,106 @@
-# service.py — SmartSRS foreground service (Kivy + pyjnius)
 from time import sleep, time
-from jnius import autoclass, cast, JavaException
 import os
+from jnius import autoclass, cast
+from kivy.utils import platform
 
-INTERVALS = [10, 60, 300, 1800, 3600]
+INTERVALS = [10, 60, 300, 1800, 3600]  # ثواني
 
-# Java classes
-Context = autoclass('android.content.Context')
-AudioManager = autoclass('android.media.AudioManager')
-MediaPlayer = autoclass('android.media.MediaPlayer')
-PowerManager = autoclass('android.os.PowerManager')
-NotificationBuilder = autoclass('android.app.Notification$Builder')
-NotificationChannel = autoclass('android.app.NotificationChannel')
-
-# Kivy PythonService (معطل عند التشغيل محلياً على الكمبيوتر)
-PythonService = None
-try:
-    PythonService = autoclass('org.kivy.android.PythonService')
-except Exception:
-    pass
-
-def request_audio_focus(am):
+def play_audio_smart_mix(file_path):
     try:
-        AFBuilder = autoclass('android.media.AudioFocusRequest$Builder')
-        AFRequest = AFBuilder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-        focusRequest = AFRequest.build()
-        res = am.requestAudioFocus(focusRequest)
-        return res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-    except JavaException:
-        res = am.requestAudioFocus(None, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-        return res == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
-
-def play_audio_smart_mix(file_path, mService):
-    try:
-        if not os.path.exists(file_path):
-            print("File not found:", file_path)
-            return False
+        PythonService = autoclass('org.kivy.android.PythonService')
+        mService = PythonService.mService
+        Context = autoclass('android.content.Context')
+        AudioManager = autoclass('android.media.AudioManager')
+        MediaPlayer = autoclass('android.media.MediaPlayer')
+        AudioAttributes = autoclass('android.media.AudioAttributes')
+        Builder = autoclass('android.media.AudioAttributes$Builder')
 
         am = cast(AudioManager, mService.getSystemService(Context.AUDIO_SERVICE))
-        pm = cast(PowerManager, mService.getSystemService(Context.POWER_SERVICE))
 
+        # طلب Audio Focus بشكل صحيح
+        result = am.requestAudioFocus(None, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+        if result != AudioManager.AUDIOFOCUS_REQUEST_GRANTED:
+            return False
+
+        attributes = Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()
         player = MediaPlayer()
-        player.setAudioStreamType(AudioManager.STREAM_MUSIC)
-        player.setWakeMode(mService.getApplicationContext(), PowerManager.PARTIAL_WAKE_LOCK)
+        player.setAudioAttributes(attributes)
         player.setDataSource(file_path)
         player.prepare()
-
-        try:
-            request_audio_focus(am)
-        except Exception:
-            pass
-
         player.start()
 
-        duration = player.getDuration() / 1000.0
-        if duration <= 0:
-            duration = 1.0
-        t_end = time() + duration + 1
-        while time() < t_end:
+        duration = player.getDuration() / 1000
+        time_end = time() + duration + 1
+        while time() < time_end:
             sleep(0.5)
 
-        try:
-            player.stop()
-            player.release()
-        except Exception:
-            pass
-
-        try:
-            am.abandonAudioFocus(None)
-        except Exception:
-            pass
-
+        player.release()
+        am.abandonAudioFocus(None)
         return True
     except Exception as e:
         print("Smart Play Error:", e)
         return False
 
 def run_service():
-    # When run inside Android service context:
-    if PythonService:
-        mService = PythonService.mService
-        # Start foreground notification ASAP
-        channel_id = "SmartSRS_Mix"
-        nm = mService.getSystemService(Context.NOTIFICATION_SERVICE)
-        try:
-            chan = NotificationChannel(channel_id, "SmartSRS Service", 2)
-            nm.createNotificationChannel(chan)
-        except Exception:
-            pass
-        try:
-            notification = NotificationBuilder(mService, channel_id) \
-                .setContentTitle("SmartSRS Running") \
-                .setContentText("Background review active") \
-                .setSmallIcon(17301659) \
-                .build()
-            mService.startForeground(1, notification)
-        except Exception:
-            pass
-    else:
-        # fallback for local testing (no Android)
-        mService = None
+    if platform != 'android':
+        return
 
-    config_path = "/sdcard/SmartSRS/srs_config.txt"
+    PythonService = autoclass('org.kivy.android.PythonService')
+    mService = PythonService.mService
+    Context = autoclass('android.content.Context')
+    PowerManager = autoclass('android.os.PowerManager')
+
+    pm = mService.getSystemService(Context.POWER_SERVICE)
+    wakelock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SmartSRS::WakeLock")
+    wakelock.acquire()
+
+    # إعداد الإشعار
+    NotificationBuilder = autoclass('android.app.Notification$Builder')
+    NotificationChannel = autoclass('android.app.NotificationChannel')
+    NotificationManager = autoclass('android.app.NotificationManager')
+    channel_id = "SmartSRS_Channel"
+    nm = mService.getSystemService(Context.NOTIFICATION_SERVICE)
+    chan = NotificationChannel(channel_id, "SmartSRS", NotificationManager.IMPORTANCE_HIGH)
+    nm.createNotificationChannel(chan)
+
+    notification = NotificationBuilder(mService, channel_id) \
+        .setContentTitle("SmartSRS") \
+        .setContentText("Running in background...") \
+        .setSmallIcon(17301659) \
+        .build()
+
+    mService.startForeground(1, notification)
+
+    app_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(app_dir, "srs_config.txt")
+
     loaded_file = None
     next_play_time = 0
     current_step = 0
 
     while True:
-        try:
-            if os.path.exists(config_path):
+        if os.path.exists(config_path):
+            try:
                 with open(config_path, "r") as f:
                     content = f.read().strip()
-                if content == "STOP":
-                    loaded_file = None
-                    os.remove(config_path)
-                    next_play_time = 0
-                elif content and content != loaded_file:
-                    loaded_file = content
-                    current_step = 0
-                    if mService:
-                        play_audio_smart_mix(loaded_file, mService)
-                    else:
-                        print("Would play (no mService):", loaded_file)
-                    next_play_time = time() + INTERVALS[0]
+                    if content == "STOP":
+                        loaded_file = None
+                        os.remove(config_path)
+                        if wakelock.isHeld():
+                            wakelock.release()
+                    elif content != loaded_file:
+                        loaded_file = content
+                        current_step = 0
+                        play_audio_smart_mix(loaded_file)
+                        next_play_time = time() + INTERVALS[0]
+                        if not wakelock.isHeld():
+                            wakelock.acquire()
+            except:
+                pass
 
-            if loaded_file and next_play_time > 0 and time() >= next_play_time:
-                if mService:
-                    played = play_audio_smart_mix(loaded_file, mService)
-                else:
-                    print("Would play now (no mService):", loaded_file)
-                    played = True
+        if loaded_file and next_play_time > 0:
+            if time() >= next_play_time:
+                played = play_audio_smart_mix(loaded_file)
                 if played:
                     current_step += 1
                     if current_step < len(INTERVALS):
@@ -137,9 +108,11 @@ def run_service():
                     else:
                         loaded_file = None
                         next_play_time = 0
-        except Exception as e:
-            print("Service loop error:", e)
+                        if wakelock.isHeld():
+                            wakelock.release()
+
         sleep(1)
 
 if __name__ == '__main__':
     run_service()
+
