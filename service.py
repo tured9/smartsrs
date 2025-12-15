@@ -44,16 +44,19 @@ def run_service():
         channel_id = "SmartSRS_Foreground"
         
         nm = mService.getSystemService(Context.NOTIFICATION_SERVICE)
-        # IMPORTANCE_LOW = 2 (يظهر إشعار صغير ولا يزعج)
-        chan = NotificationChannel(channel_id, "SmartSRS Background", 2)
+        # IMPORTANCE_DEFAULT = 3 (يظهر في الشريط الرئيسي دون إخفاء)
+        chan = NotificationChannel(channel_id, "SmartSRS Background", 3)
         nm.createNotificationChannel(chan)
 
-        # 3. بناء الإشعار
+        # 3. بناء الإشعار مع MediaStyle
         NotificationBuilder = autoclass('android.app.Notification$Builder')
+        MediaStyle = autoclass('android.app.Notification$MediaStyle')
+
         notification = NotificationBuilder(mService, channel_id) \
             .setContentTitle("Smart SRS is Running") \
             .setContentText("Listening in background...") \
-            .setSmallIcon(17301659) \
+            .setSmallIcon(17301569)  # أيقونة أفضل: ic_media_play (بدلاً من 17301659)
+            .setStyle(MediaStyle())  # أسلوب وسائط ليكون دائمًا مرئيًا
             .setOngoing(True) \
             .build()
             
