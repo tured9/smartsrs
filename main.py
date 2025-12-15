@@ -2,10 +2,10 @@ from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
-from kivy.uix.filechooser import FileChooserIconView
 from kivy.utils import platform
 from kivy.core.window import Window
 from kivy.graphics import Color, Rectangle
+from plyer import filechooser  # إضافة plyer لمنتقي الملفات الأصلي
 import os
 # بدء الخدمة فوراً عند فتح التطبيق
 if platform == 'android':
@@ -20,7 +20,7 @@ if platform == 'android':
         Permission.WRITE_EXTERNAL_STORAGE,
         Permission.FOREGROUND_SERVICE,
         Permission.WAKE_LOCK,
-        Permission.POST_NOTIFICATIONS # إضافة هذا
+        Permission.POST_NOTIFICATIONS
     ])
 COLOR_BG = (0.12, 0.14, 0.19, 1)
 COLOR_BTN_START = (0.0, 0.7, 0.8, 1)
@@ -31,6 +31,7 @@ class SRSPlayer(App):
         app_dir = os.path.dirname(os.path.abspath(__file__))
         self.config_path = os.path.join(app_dir, "srs_config.txt")
         self.is_running = False
+        self.selected_file = None  # متغير لتخزين مسار الملف المختار
         layout = BoxLayout(orientation='vertical', padding=20, spacing=15)
        
         # العنوان
@@ -40,23 +41,38 @@ class SRSPlayer(App):
         btn_fix = Button(text="🔋 ALLOW BACKGROUND RUN", size_hint=(1, 0.1), background_color=(1, 0.5, 0, 1))
         btn_fix.bind(on_press=self.open_settings)
         layout.add_widget(btn_fix)
-        self.lbl_info = Label(text="Select File & Press Start", size_hint=(1, 0.1), font_size='16sp')
+        self.lbl_info = Label(text="Press Choose File & Start", size_hint=(1, 0.1), font_size='16sp')
         layout.add_widget(self.lbl_info)
-        # المستعرض
-        chooser_layout = BoxLayout(size_hint=(1, 0.5))
-        with chooser_layout.canvas.before:
-            Color(0.2, 0.25, 0.3, 1)
-            Rectangle(pos=chooser_layout.pos, size=chooser_layout.size)
        
-        self.chooser = FileChooserIconView(path="/storage/emulated/0/", filters=['*.mp3', '*.wav', '*.m4a'])
-        layout.add_widget(self.chooser)
+        # زر اختيار الملف (بدلاً من FileChooserIconView)
+        btn_choose = Button(text="Choose Audio File", size_hint=(1, 0.15), background_color=(0.3, 0.6, 0.9, 1), font_size='18sp')
+        btn_choose.bind(on_press=self.choose_file)
+        layout.add_widget(btn_choose)
+       
+        # عرض الملف المختار
+        self.lbl_selected = Label(text="No file selected", size_hint=(1, 0.2), font_size='14sp', color=(1,1,1,1))
+        layout.add_widget(self.lbl_selected)
+       
         # زر البدء
         self.btn_action = Button(text="START SESSION", size_hint=(1, 0.15), background_normal='', background_color=COLOR_BTN_START, font_size='20sp', bold=True)
         self.btn_action.bind(on_press=self.toggle_system)
         layout.add_widget(self.btn_action)
         return layout
+    
+    def choose_file(self, instance):
+        # فتح منتقي الملفات الأصلي مع فلاتر للملفات الصوتية
+        filechooser.open_file(on_selection=self.handle_selection, filters=['*.mp3', '*.wav', '*.m4a'])
+    
+    def handle_selection(self, selection):
+        # التعامل مع الاختيار (قائمة بمسارات الملفات)
+        if selection:
+            self.selected_file = selection[0]
+            self.lbl_selected.text = f"Selected: {os.path.basename(self.selected_file)}"
+            self.lbl_info.text = "File selected! Press Start."
+        else:
+            self.lbl_info.text = "No file selected."
+    
     def open_settings(self, instance):
-        # يفتح إعدادات البطارية مباشرة
         if platform == 'android':
             try:
                 PythonActivity = autoclass('org.kivy.android.PythonActivity')
@@ -71,12 +87,12 @@ class SRSPlayer(App):
                 activity.startActivity(intent)
             except:
                 self.lbl_info.text = "Error opening settings"
+    
     def toggle_system(self, instance):
         if not self.is_running:
-            if self.chooser.selection:
-                file_path = self.chooser.selection[0]
+            if self.selected_file:
                 with open(self.config_path, "w") as f:
-                    f.write(file_path)
+                    f.write(self.selected_file)
                 self.is_running = True
                 self.btn_action.text = "STOP SESSION"
                 self.btn_action.background_color = COLOR_BTN_STOP
