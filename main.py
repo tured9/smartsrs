@@ -20,7 +20,8 @@ if platform == 'android':
         Permission.READ_EXTERNAL_STORAGE,
         Permission.WRITE_EXTERNAL_STORAGE,
         Permission.FOREGROUND_SERVICE,
-        Permission.WAKE_LOCK
+        Permission.WAKE_LOCK,
+        Permission.POST_NOTIFICATIONS  # إضافة هذا
     ])
 
 COLOR_BG = (0.12, 0.14, 0.19, 1)
