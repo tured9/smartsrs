@@ -1,4 +1,4 @@
-name: Build APK Master Fix
+name: Build APK Expert
 on:
   push:
     branches: [ main ]
@@ -10,14 +10,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 1. العودة إلى Java 17 (لأن أدوات أندرويد الحديثة لا تعمل إلا بها)
+      # استخدام جافا 17 المتوافقة مع أحدث أدوات أندرويد
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # 2. تثبيت المكتبات
+      # تثبيت المكتبات اللازمة
       - name: Install Dependencies
         run: |
           sudo apt-get update
@@ -28,23 +28,23 @@ jobs:
             zlib1g-dev unzip zip \
             libltdl-dev libffi-dev libssl-dev autoconf automake libtool pkg-config autoconf-archive
 
-      # 3. التغيير الجذري: تثبيت Buildozer من المصدر الرئيسي (Master)
-      # هذا يحل مشكلة الانهيار (Broken Pipe) التي واجهتك
-      - name: Install Buildozer Master
+      # تثبيت Buildozer من المصدر الرئيسي (لتفادي الأخطاء)
+      - name: Install Buildozer
         run: |
           pip3 install --upgrade https://github.com/kivy/buildozer/archive/master.zip
           pip3 install --upgrade cython==0.29.33 virtualenv
 
-      - name: Clean Build
+      # تنظيف البيئة
+      - name: Clean
         run: |
           rm -rf .buildozer bin
 
-      # 4. البناء (سيقوم بتحميل SDK المتوافق تلقائياً)
+      # البناء
       - name: Build APK
         run: |
           yes | buildozer android debug
 
-      # 5. الرفع
+      # الرفع
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
