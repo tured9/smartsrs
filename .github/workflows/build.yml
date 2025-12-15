@@ -32,7 +32,7 @@ jobs:
       - name: Install Buildozer
         run: |
           pip3 install --upgrade https://github.com/kivy/buildozer/archive/master.zip
-          pip3 install --upgrade cython==0.29.33 virtualenv
+          pip3 install --upgrade cython==0.29.33 virtualenv python-for-android
 
       # تنظيف البيئة
       - name: Clean
