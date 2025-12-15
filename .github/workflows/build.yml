@@ -31,16 +31,35 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Build with Buildozer
-        uses: ArtemSBulgakov/buildozer-action@v1
-        id: buildozer
-        with:
-          command: buildozer android debug
-          workdir: .
-          buildozer_version: master
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-pip build-essential git python3-dev \
+            libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
+            libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
+            zlib1g-dev unzip zip \
+            libltdl-dev libffi-dev libssl-dev autoconf automake libtool pkg-config autoconf-archive
+
+      - name: Install Buildozer and Dependencies
+        run: |
+          pip3 install --user --upgrade git+https://github.com/kivy/buildozer.git@master
+          pip3 install --user --upgrade cython==0.29.33 virtualenv python-for-android
+
+      - name: Clean
+        run: |
+          rm -rf .buildozer bin
+
+      - name: Build APK
+        run: |
+          buildozer -v android debug  # بدون yes | لتجنب broken pipe
+
+      - name: Fix Permissions if Needed  # إضافي لأي مشاكل chown
+        if: failure()  # شغل فقط إذا فشل البناء
+        run: sudo chown -R $USER:$USER .buildozer bin
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: SmartSRS-App
-          path: ${{ steps.buildozer.outputs.filename }}
+          path: bin/*.apk
