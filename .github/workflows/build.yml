@@ -1,4 +1,4 @@
-name: Build APK Expert
+name: Build APK
 on:
   push:
     branches: [ main ]
@@ -6,47 +6,41 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-
     steps:
       - uses: actions/checkout@v4
 
-      # استخدام جافا 17 المتوافقة مع أحدث أدوات أندرويد
+      - name: Get Date
+        id: get-date
+        run: echo "date=$(date -u '+%Y%m%d')" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Cache Buildozer global directory
+        uses: actions/cache@v4
+        with:
+          path: .buildozer_global
+          key: buildozer-global-${{ hashFiles('buildozer.spec') }}
+
+      - uses: actions/cache@v4
+        with:
+          path: .buildozer
+          key: ${{ runner.os }}-${{ env.date }}-${{ hashFiles('buildozer.spec') }}
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # تثبيت المكتبات اللازمة
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            python3-pip build-essential git python3-dev \
-            libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
-            libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
-            zlib1g-dev unzip zip \
-            libltdl-dev libffi-dev libssl-dev autoconf automake libtool pkg-config autoconf-archive
+      - name: Build with Buildozer
+        uses: ArtemSBulgakov/buildozer-action@v1
+        id: buildozer
+        with:
+          command: buildozer android debug
+          workdir: .
+          buildozer_version: master
 
-      # تثبيت Buildozer من المصدر الرئيسي (لتفادي الأخطاء)
-      - name: Install Buildozer
-        run: |
-          pip3 install --upgrade https://github.com/kivy/buildozer/archive/master.zip
-          pip3 install --upgrade cython==0.29.33 virtualenv python-for-android
-
-      # تنظيف البيئة
-      - name: Clean
-        run: |
-          rm -rf .buildozer bin
-
-      # البناء
-      - name: Build APK
-        run: |
-          yes | buildozer android debug
-
-      # الرفع
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: SmartSRS-App
-          path: bin/*.apk
+          path: ${{ steps.buildozer.outputs.filename }}
