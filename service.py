@@ -1,76 +1,66 @@
 from time import sleep, time
-import os
-from jnius import autoclass, cast
+from jnius import autoclass
 from kivy.utils import platform
+import os
 
-INTERVALS = [10, 60, 300, 1800, 3600]  # ثواني
+# الفترات الزمنية (ثواني)
+INTERVALS = [10, 60, 300, 1800, 3600]
 
-def play_audio_smart_mix(file_path):
+def play_native_audio(file_path):
+    """تشغيل الصوت باستخدام مشغل النظام الأصلي"""
     try:
-        PythonService = autoclass('org.kivy.android.PythonService')
-        mService = PythonService.mService
-        Context = autoclass('android.content.Context')
-        AudioManager = autoclass('android.media.AudioManager')
         MediaPlayer = autoclass('android.media.MediaPlayer')
-        AudioAttributes = autoclass('android.media.AudioAttributes')
-        Builder = autoclass('android.media.AudioAttributes$Builder')
-
-        am = cast(AudioManager, mService.getSystemService(Context.AUDIO_SERVICE))
-
-        # طلب Audio Focus بشكل صحيح
-        result = am.requestAudioFocus(None, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-        if result != AudioManager.AUDIOFOCUS_REQUEST_GRANTED:
-            return False
-
-        attributes = Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()
         player = MediaPlayer()
-        player.setAudioAttributes(attributes)
         player.setDataSource(file_path)
         player.prepare()
+        player.setVolume(1.0, 1.0) # صوت كامل
         player.start()
-
-        duration = player.getDuration() / 1000
-        time_end = time() + duration + 1
-        while time() < time_end:
+        
+        # الانتظار حتى ينتهي المقطع
+        while player.isPlaying():
             sleep(0.5)
-
+            
         player.release()
-        am.abandonAudioFocus(None)
         return True
     except Exception as e:
-        print("Smart Play Error:", e)
+        print(f"Service Audio Error: {e}")
         return False
 
 def run_service():
-    if platform != 'android':
-        return
+    if platform == 'android':
+        PythonService = autoclass('org.kivy.android.PythonService')
+        mService = PythonService.mService
+        Context = autoclass('android.content.Context')
+        PowerManager = autoclass('android.os.PowerManager')
 
-    PythonService = autoclass('org.kivy.android.PythonService')
-    mService = PythonService.mService
-    Context = autoclass('android.content.Context')
-    PowerManager = autoclass('android.os.PowerManager')
+        # 1. تفعيل WakeLock (يمنع المعالج من النوم 100%)
+        pm = mService.getSystemService(Context.POWER_SERVICE)
+        wakelock = pm.newWakeLock(1, "SmartSRS:ForeverLock")
+        wakelock.acquire()
 
-    pm = mService.getSystemService(Context.POWER_SERVICE)
-    wakelock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SmartSRS::WakeLock")
-    wakelock.acquire()
+        # 2. إنشاء قناة الإشعارات (ضروري لأندرويد 8+)
+        NotificationChannel = autoclass('android.app.NotificationChannel')
+        NotificationManager = autoclass('android.app.NotificationManager')
+        channel_id = "SmartSRS_Foreground"
+        
+        nm = mService.getSystemService(Context.NOTIFICATION_SERVICE)
+        # IMPORTANCE_LOW = 2 (يظهر إشعار صغير ولا يزعج)
+        chan = NotificationChannel(channel_id, "SmartSRS Background", 2)
+        nm.createNotificationChannel(chan)
 
-    # إعداد الإشعار
-    NotificationBuilder = autoclass('android.app.Notification$Builder')
-    NotificationChannel = autoclass('android.app.NotificationChannel')
-    NotificationManager = autoclass('android.app.NotificationManager')
-    channel_id = "SmartSRS_Channel"
-    nm = mService.getSystemService(Context.NOTIFICATION_SERVICE)
-    chan = NotificationChannel(channel_id, "SmartSRS", NotificationManager.IMPORTANCE_HIGH)
-    nm.createNotificationChannel(chan)
+        # 3. بناء الإشعار
+        NotificationBuilder = autoclass('android.app.Notification$Builder')
+        notification = NotificationBuilder(mService, channel_id) \
+            .setContentTitle("Smart SRS is Running") \
+            .setContentText("Listening in background...") \
+            .setSmallIcon(17301659) \
+            .setOngoing(True) \
+            .build()
+            
+        # 4. تشغيل الخدمة في المقدمة (هذا ما يمنع النظام من قتلها)
+        mService.startForeground(101, notification)
 
-    notification = NotificationBuilder(mService, channel_id) \
-        .setContentTitle("SmartSRS") \
-        .setContentText("Running in background...") \
-        .setSmallIcon(17301659) \
-        .build()
-
-    mService.startForeground(1, notification)
-
+    # تحديد مسار ملف الأوامر
     app_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(app_dir, "srs_config.txt")
 
@@ -78,41 +68,42 @@ def run_service():
     next_play_time = 0
     current_step = 0
 
+    # حلقة لانهائية
     while True:
+        # قراءة الأوامر
         if os.path.exists(config_path):
             try:
                 with open(config_path, "r") as f:
                     content = f.read().strip()
-                    if content == "STOP":
-                        loaded_file = None
-                        os.remove(config_path)
-                        if wakelock.isHeld():
-                            wakelock.release()
-                    elif content != loaded_file:
-                        loaded_file = content
-                        current_step = 0
-                        play_audio_smart_mix(loaded_file)
-                        next_play_time = time() + INTERVALS[0]
-                        if not wakelock.isHeld():
-                            wakelock.acquire()
+                
+                # أمر التوقف
+                if content == "STOP":
+                    loaded_file = None
+                    os.remove(config_path)
+                    
+                # أمر ملف جديد
+                elif content and content != loaded_file:
+                    loaded_file = content
+                    current_step = 0
+                    # تشغيل فوري للتأكيد
+                    play_native_audio(loaded_file)
+                    next_play_time = time() + INTERVALS[0]
             except:
                 pass
 
+        # التحقق من الموعد
         if loaded_file and next_play_time > 0:
             if time() >= next_play_time:
-                played = play_audio_smart_mix(loaded_file)
-                if played:
-                    current_step += 1
-                    if current_step < len(INTERVALS):
-                        next_play_time = time() + INTERVALS[current_step]
-                    else:
-                        loaded_file = None
-                        next_play_time = 0
-                        if wakelock.isHeld():
-                            wakelock.release()
+                play_native_audio(loaded_file)
+                
+                current_step += 1
+                if current_step < len(INTERVALS):
+                    next_play_time = time() + INTERVALS[current_step]
+                else:
+                    loaded_file = None # انتهت الجلسة
 
+        # راحة قصيرة للمعالج
         sleep(1)
 
 if __name__ == '__main__':
     run_service()
-
