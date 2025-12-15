@@ -5,7 +5,7 @@ package.domain = org.mysrs
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,txt
 version = 1.0
-requirements = python3,kivy,android,pyjnius,Cython==0.29.33
+requirements = python3,kivy,android,pyjnius,Cython==0.29.33,plyer
 services = SRSService:service.py
 orientation = portrait
 fullscreen = 0
