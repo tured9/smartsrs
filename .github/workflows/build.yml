@@ -1,73 +1,57 @@
-name: Build SmartSRS v3.0
-
+name: Build SmartSRS Fix
 on:
   push:
     branches: [ main, master ]
-  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-22.04
-    permissions:
-      contents: read
-      actions: write
 
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      # 1. سحب الكود
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Setup Python 3.10
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
+      # 2. إعداد الجافا 17 (الطريقة الرسمية الصحيحة)
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
-    - name: Cache Buildozer
-      uses: actions/cache@v4
-      with:
-        path: .buildozer
-        key: buildozer-${{ hashFiles('buildozer.spec') }}
+      # 3. تثبيت مكتبات النظام الضرورية
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            python3-pip build-essential git python3-dev \
+            libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
+            libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
+            zlib1g-dev unzip zip \
+            libltdl-dev libffi-dev libssl-dev autoconf automake libtool pkg-config \
+            autoconf-archive
 
-    - name: Install System Dependencies
-      run: |
-        sudo apt-get update -qq
-        sudo apt-get install -y --no-install-recommends \
-          build-essential clang git zip unzip openjdk-17-jdk \
-          autoconf libtool pkg-config zlib1g-dev \
-          libncurses-dev libtinfo6 \
-          cmake libffi-dev libssl-dev libltdl-dev ccache \
-          libjpeg-dev libpng-dev libsqlite3-dev
+      # 4. تثبيت Buildozer (النسخة الحديثة Master) و Cython
+      - name: Install Buildozer & Cython
+        run: |
+          pip3 install --upgrade pip
+          pip3 install --user --upgrade "cython<3.0.0" 
+          pip3 install --upgrade https://github.com/kivy/buildozer/archive/master.zip
+          
+      # 5. تنظيف أي بناء سابق فاسد
+      - name: Clean Build
+        run: |
+          rm -rf .buildozer bin
 
-    - name: Set JAVA_HOME
-      run: |
-        echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
-        echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
+      # 6. بدء البناء
+      - name: Build APK
+        run: |
+          yes | buildozer android debug
 
-    - name: Install Python Tools
-      run: |
-        python -m pip install --upgrade pip
-        pip install cython==0.29.36
-        pip install buildozer==1.5.0
-
-    - name: Clean old build
-      run: |
-        rm -rf .buildozer bin || true
-
-    - name: Build APK (arm64 only)
-      env:
-        BUILDOZER_WARN_ON_ROOT: 0
-        APP_ANDROID_ACCEPT_SDK_LICENSE: 1
-        GRADLE_OPTS: "-Xmx2048m"
-      run: |
-        yes | buildozer -v android debug
-
-    - name: List output
-      run: |
-        ls -lah bin/ || true
-
-    - name: Upload APK
-      if: success()
-      uses: actions/upload-artifact@v4
-      with:
-        name: SmartSRS-v3.0-arm64
-        path: bin/*.apk
-        retention-days: 90
+      # 7. رفع التطبيق
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartSRS-APK
+          path: bin/*.apk
