@@ -1,26 +1,23 @@
 [app]
-# الاسم والإعدادات الأساسية
 title = SmartSRS
 package.name = smartsrs
 package.domain = org.mysrs
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,txt,mp3,wav,ogg,m4a
-version = 3.1
+version = 3.0
 
-# المتطلبات (تحديد Kivy مهم)
 requirements = python3,kivy==2.2.1,android,pyjnius
 
 # تعريف الخدمة
-services = SRSService:service.py
+services = SRSService:service.py:foreground
 
-# الشاشة
 orientation = portrait
 fullscreen = 0
 
-# الأذونات الكاملة (للمنبه والخدمة)
+# الأذونات الكاملة (كما طلبتها)
 android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,WAKE_LOCK,FOREGROUND_SERVICE,POST_NOTIFICATIONS,REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,MODIFY_AUDIO_SETTINGS,ACCESS_NOTIFICATION_POLICY,SCHEDULE_EXACT_ALARM,USE_EXACT_ALARM
 
-# إعدادات Android (33 هو الأكثر استقراراً مع Kivy حالياً)
+# إعدادات Android
 android.api = 33
 android.minapi = 21
 android.ndk = 25b
@@ -28,11 +25,13 @@ android.accept_sdk_license = True
 android.archs = arm64-v8a
 android.allow_backup = True
 
-# خيارات متقدمة
+# إعدادات خاصة
 android.manifest_placeholders = {"USE_EXACT_ALARM": "true", "SCHEDULE_EXACT_ALARM": "true"}
+android.foreground_service_types = mediaPlayback,dataSync,location
 android.entrypoint = org.kivy.android.PythonActivity
-# إزالة التحديد اليدوي لـ p4a branch ليعمل تلقائياً
-# p4a.branch = stable
+
+# --- هذا السطر ضروري جداً لنجاح البناء ---
+p4a.branch = master
 
 [buildozer]
 log_level = 2
