@@ -1,26 +1,26 @@
 """
-Smart SRS Service - النسخة النهائية القوية جداً
-مع جميع التحسينات الاحترافية للعمل في الخلفية بشكل موثوق 100%
+Smart SRS Service - ULTIMATE VERSION
+Uses AlarmManager for GUARANTEED exact timing
++ Timer fallback for maximum reliability
 """
 
 from time import sleep, time
 from jnius import autoclass, cast
 from kivy.utils import platform
 import os
-import sys
 
-# فترات المراجعة المتباعدة (بالثواني)
-# يمكنك تغييرها حسب رغبتك
-INTERVALS = [10, 60, 300, 1800, 3600]  # 10 ثانية، دقيقة، 5 دقائق، 30 دقيقة، ساعة
+# Review intervals (in seconds)
+# Customize these as you wish
+INTERVALS = [10, 60, 300, 1800, 3600]  # 10s, 1min, 5min, 30min, 1hour
 
-# للاختبار السريع استخدم هذه:
+# For quick testing use:
 # INTERVALS = [5, 10, 15, 20, 30]
 
 
 def play_audio_ultimate(file_path):
     """
-    تشغيل صوتي احترافي مع معالجة أخطاء قوية
-    يعمل مثل تطبيقات الموسيقى تماماً
+    Ultimate audio player with robust error handling
+    Works like Spotify/YouTube Music
     """
     try:
         PythonService = autoclass('org.kivy.android.PythonService')
@@ -32,43 +32,33 @@ def play_audio_ultimate(file_path):
         
         am = cast(AudioManager, mService.getSystemService(Context.AUDIO_SERVICE))
         
-        # 1. إنشاء Audio Attributes (مثل تطبيقات الموسيقى)
-        try:
-            Builder = autoclass('android.media.AudioAttributes$Builder')
-            attributes = Builder() \
-                .setUsage(1) \
-                .setContentType(2) \
-                .build()
-        except:
-            attributes = None
-        
-        # 2. طلب Audio Focus (مهم جداً!)
+        # Request Audio Focus
         focus_result = -1
         try:
-            # محاولة استخدام API الحديث (Android 8+)
-            FocusBuilder = autoclass('android.media.AudioFocusRequest$Builder')
-            focus_request = FocusBuilder(2) \
-                .setAudioAttributes(attributes if attributes else AudioAttributes.Builder().build()) \
-                .setAcceptsDelayedFocusGain(True) \
-                .build()
-            focus_result = am.requestAudioFocus(focus_request)
-            print(f"✅ Audio Focus (Modern): {focus_result}")
-        except:
-            # استخدام API القديم (Android 7 وأقل)
+            Builder = autoclass('android.media.AudioAttributes$Builder')
+            attributes = Builder().setUsage(1).setContentType(2).build()
+            
             try:
+                FocusBuilder = autoclass('android.media.AudioFocusRequest$Builder')
+                focus_request = FocusBuilder(2) \
+                    .setAudioAttributes(attributes) \
+                    .setAcceptsDelayedFocusGain(True) \
+                    .build()
+                focus_result = am.requestAudioFocus(focus_request)
+                print(f"✅ Audio Focus (Modern): {focus_result}")
+            except:
                 focus_result = am.requestAudioFocus(None, 3, 2)
                 print(f"✅ Audio Focus (Legacy): {focus_result}")
-            except Exception as e:
-                print(f"⚠️ Audio Focus failed: {e}")
+        except Exception as e:
+            print(f"⚠️ Audio Focus error: {e}")
         
-        # 3. إنشاء وتشغيل MediaPlayer
+        # Create and play MediaPlayer
         player = MediaPlayer()
         
-        if attributes:
-            try:
-                player.setAudioAttributes(attributes)
-            except:
-                pass
+        try:
+            player.setAudioAttributes(attributes)
+        except:
+            pass
         
         player.setDataSource(file_path)
         player.prepare()
@@ -76,7 +66,7 @@ def play_audio_ultimate(file_path):
         
         print(f"🎵 Playing: {os.path.basename(file_path)}")
         
-        # 4. الانتظار حتى ينتهي التشغيل
+        # Wait for completion
         duration = player.getDuration() / 1000.0
         end_time = time() + duration + 1.5
         
@@ -85,7 +75,7 @@ def play_audio_ultimate(file_path):
                 break
             sleep(0.5)
         
-        # 5. التنظيف
+        # Cleanup
         try:
             player.stop()
         except:
@@ -93,13 +83,13 @@ def play_audio_ultimate(file_path):
         
         player.release()
         
-        # إرجاع Audio Focus
+        # Release Audio Focus
         try:
             am.abandonAudioFocus(focus_request if 'focus_request' in locals() else None)
         except:
             pass
         
-        print("✅ Playback completed successfully")
+        print("✅ Playback completed")
         return True
         
     except Exception as e:
@@ -109,17 +99,99 @@ def play_audio_ultimate(file_path):
         return False
 
 
+def schedule_alarm(context, delay_seconds, review_number):
+    """
+    Schedule exact alarm using AlarmManager
+    This FORCES Android to play at exact time
+    """
+    try:
+        AlarmManager = autoclass('android.app.AlarmManager')
+        Intent = autoclass('android.content.Intent')
+        PendingIntent = autoclass('android.app.PendingIntent')
+        SystemClock = autoclass('android.os.SystemClock')
+        
+        alarm_manager = cast(AlarmManager, context.getSystemService('alarm'))
+        
+        # Create intent for alarm
+        intent = Intent(context, autoclass('org.mysrs.smartsrs.ServiceSrsservice'))
+        intent.setAction(f"ALARM_REVIEW_{review_number}")
+        intent.putExtra("review_number", review_number)
+        
+        # Create PendingIntent
+        pending_intent = PendingIntent.getService(
+            context,
+            review_number,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        )
+        
+        # Calculate trigger time
+        trigger_time = SystemClock.elapsedRealtime() + (delay_seconds * 1000)
+        
+        # Schedule exact alarm (works even in Doze mode!)
+        try:
+            alarm_manager.setExactAndAllowWhileIdle(
+                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                trigger_time,
+                pending_intent
+            )
+            print(f"⏰ AlarmManager scheduled review #{review_number} in {delay_seconds}s")
+            return True
+        except:
+            # Fallback for older Android versions
+            alarm_manager.setExact(
+                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                trigger_time,
+                pending_intent
+            )
+            print(f"⏰ AlarmManager (legacy) scheduled review #{review_number} in {delay_seconds}s")
+            return True
+            
+    except Exception as e:
+        print(f"❌ AlarmManager schedule error: {e}")
+        return False
+
+
+def cancel_all_alarms(context):
+    """Cancel all scheduled alarms"""
+    try:
+        AlarmManager = autoclass('android.app.AlarmManager')
+        Intent = autoclass('android.content.Intent')
+        PendingIntent = autoclass('android.app.PendingIntent')
+        
+        alarm_manager = cast(AlarmManager, context.getSystemService('alarm'))
+        
+        for i in range(1, len(INTERVALS) + 1):
+            intent = Intent(context, autoclass('org.mysrs.smartsrs.ServiceSrsservice'))
+            intent.setAction(f"ALARM_REVIEW_{i}")
+            
+            pending_intent = PendingIntent.getService(
+                context,
+                i,
+                intent,
+                PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE
+            )
+            
+            if pending_intent:
+                alarm_manager.cancel(pending_intent)
+                pending_intent.cancel()
+        
+        print("🗑️ All alarms cancelled")
+    except Exception as e:
+        print(f"⚠️ Cancel alarms error: {e}")
+
+
 def run_service():
     """
-    الخدمة الرئيسية - محسّنة للعمل بشكل موثوق 100%
-    مع جميع التحسينات الاحترافية
+    ULTIMATE SERVICE with AlarmManager + Timer
+    Double protection for maximum reliability
     """
     if platform != 'android':
         print("Not Android - service not started")
         return
     
     try:
-        # استيراد الكلاسات
+        # Import classes
         PythonService = autoclass('org.kivy.android.PythonService')
         mService = PythonService.mService
         Context = autoclass('android.content.Context')
@@ -130,71 +202,55 @@ def run_service():
         PendingIntent = autoclass('android.app.PendingIntent')
         Intent = autoclass('android.content.Intent')
         
-        print("="*50)
-        print("🚀 Smart SRS Service Starting...")
-        print("="*50)
+        print("=" * 60)
+        print("🚀 Smart SRS Service - ULTIMATE VERSION")
+        print("=" * 60)
         
-        # ═══════════════════════════════════════════════
-        # 1. WakeLock المحسّن - يمنع النوم تماماً
-        # ═══════════════════════════════════════════════
+        # ══════════════════════════════════════════════════════════
+        # 1. POWERFUL WakeLock
+        # ══════════════════════════════════════════════════════════
         pm = mService.getSystemService(Context.POWER_SERVICE)
         wakelock = pm.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
-            "SmartSRS::UltimateReviewLock"
+            "SmartSRS::UltimateAlarmLock"
         )
-        wakelock.setReferenceCounted(False)  # مهم جداً!
-        
+        wakelock.setReferenceCounted(False)
         print("✅ WakeLock created")
         
-        # ═══════════════════════════════════════════════
-        # 2. Notification Channel قوي جداً
-        # ═══════════════════════════════════════════════
+        # ══════════════════════════════════════════════════════════
+        # 2. HIGH PRIORITY Notification Channel
+        # ══════════════════════════════════════════════════════════
         channel_id = "SmartSRS_Ultimate"
         nm = mService.getSystemService(Context.NOTIFICATION_SERVICE)
         
-        # IMPORTANCE_HIGH = 4 (أعلى أولوية)
-        chan = NotificationChannel(channel_id, "Smart Review System", 4)
-        chan.setDescription("Spaced repetition review - Always running")
+        chan = NotificationChannel(channel_id, "Smart Review", 4)
+        chan.setDescription("Spaced repetition with AlarmManager")
         chan.setShowBadge(True)
-        chan.setLockscreenVisibility(1)  # VISIBILITY_PUBLIC
-        
-        try:
-            AudioAttributes = autoclass('android.media.AudioAttributes')
-            Builder = autoclass('android.media.AudioAttributes$Builder')
-            sound_attr = Builder() \
-                .setUsage(5) \
-                .setContentType(4) \
-                .build()
-            chan.setSound(None, sound_attr)
-        except:
-            chan.setSound(None, None)
+        chan.setLockscreenVisibility(1)
+        chan.setSound(None, None)
         
         nm.createNotificationChannel(chan)
-        
         print("✅ Notification channel created")
         
-        # ═══════════════════════════════════════════════
-        # 3. PendingIntent للنقر على الإشعار
-        # ═══════════════════════════════════════════════
+        # ══════════════════════════════════════════════════════════
+        # 3. PendingIntent for notification tap
+        # ══════════════════════════════════════════════════════════
         launch_intent = mService.getPackageManager() \
             .getLaunchIntentForPackage(mService.getPackageName())
         
         if launch_intent:
             pending_intent = PendingIntent.getActivity(
-                mService,
-                0,
-                launch_intent,
-                PendingIntent.FLAG_IMMUTABLE
+                mService, 0, launch_intent, PendingIntent.FLAG_IMMUTABLE
             )
         else:
             pending_intent = None
         
-        # ═══════════════════════════════════════════════
-        # 4. Notification قوي جداً
-        # ═══════════════════════════════════════════════
+        # ══════════════════════════════════════════════════════════
+        # 4. Create Foreground Notification
+        # ══════════════════════════════════════════════════════════
         notification = NotificationBuilder(mService, channel_id) \
             .setContentTitle("🎯 Smart Review Active") \
-            .setContentText("Background review running...") \
+            .setContentText("Background review with AlarmManager") \
             .setSmallIcon(17301659) \
             .setOngoing(True) \
             .setPriority(2) \
@@ -206,18 +262,18 @@ def run_service():
         
         notification = notification.build()
         
-        # ═══════════════════════════════════════════════
-        # 5. بدء Foreground Service
-        # ═══════════════════════════════════════════════
+        # ══════════════════════════════════════════════════════════
+        # 5. Start Foreground Service
+        # ══════════════════════════════════════════════════════════
         try:
             mService.startForeground(1, notification)
             print("✅ Foreground service started")
         except Exception as e:
             print(f"⚠️ startForeground error: {e}")
         
-        # ═══════════════════════════════════════════════
-        # 6. المتغيرات الرئيسية
-        # ═══════════════════════════════════════════════
+        # ══════════════════════════════════════════════════════════
+        # 6. Main Variables
+        # ══════════════════════════════════════════════════════════
         app_dir = os.path.dirname(os.path.abspath(__file__))
         config_path = os.path.join(app_dir, "srs_config.txt")
         
@@ -226,46 +282,51 @@ def run_service():
         current_step = 0
         review_count = 0
         total_reviews = 0
+        alarms_scheduled = False
         
         print(f"📁 Config path: {config_path}")
         print("🔄 Service loop starting...")
-        print("="*50)
+        print("=" * 60 + "\n")
         
-        # ═══════════════════════════════════════════════
-        # 7. الحلقة الرئيسية - المحرك الأساسي
-        # ═══════════════════════════════════════════════
+        # ══════════════════════════════════════════════════════════
+        # 7. MAIN LOOP - Double protection (Timer + AlarmManager)
+        # ══════════════════════════════════════════════════════════
         while True:
             try:
-                # قراءة ملف الإعدادات
+                # Read config file
                 if os.path.exists(config_path):
                     try:
                         with open(config_path, "r", encoding='utf-8') as f:
                             content = f.read().strip()
                         
-                        # أمر الإيقاف
+                        # STOP command
                         if content == "STOP":
-                            print("\n" + "="*50)
+                            print("\n" + "=" * 60)
                             print("⏹️ STOP command received")
+                            
+                            # Cancel all alarms
+                            cancel_all_alarms(mService)
                             
                             loaded_file = None
                             next_play_time = 0
                             current_step = 0
+                            alarms_scheduled = False
                             
-                            # تحرير WakeLock
+                            # Release WakeLock
                             if wakelock.isHeld():
                                 wakelock.release()
                                 print("🔓 WakeLock released")
                             
-                            # حذف ملف الإعدادات
+                            # Delete config file
                             try:
                                 os.remove(config_path)
                             except:
                                 pass
                             
-                            # إشعار الإيقاف
+                            # Stop notification
                             stop_notification = NotificationBuilder(mService, channel_id) \
                                 .setContentTitle("⏹️ Review Stopped") \
-                                .setContentText(f"Session completed: {total_reviews} reviews done") \
+                                .setContentText(f"Completed {total_reviews} reviews") \
                                 .setSmallIcon(17301659) \
                                 .setOngoing(False) \
                                 .build()
@@ -273,25 +334,26 @@ def run_service():
                             nm.notify(1, stop_notification)
                             
                             print(f"📊 Total reviews: {total_reviews}")
-                            print("="*50 + "\n")
+                            print("=" * 60 + "\n")
                             
                             review_count = 0
                         
-                        # ملف جديد
+                        # NEW FILE
                         elif content and content != loaded_file:
-                            print("\n" + "="*50)
-                            print(f"📥 New file loaded: {os.path.basename(content)}")
+                            print("\n" + "=" * 60)
+                            print(f"📥 New file: {os.path.basename(content)}")
                             
                             loaded_file = content
                             current_step = 0
                             review_count = 0
+                            alarms_scheduled = False
                             
-                            # الحصول على WakeLock
+                            # Get WakeLock
                             if not wakelock.isHeld():
                                 wakelock.acquire()
                                 print("🔒 WakeLock acquired")
                             
-                            # تشغيل فوري (المراجعة الأولى)
+                            # Play immediately (Review #1)
                             print("🎵 Review #1 (immediate)...")
                             success = play_audio_ultimate(loaded_file)
                             
@@ -299,46 +361,55 @@ def run_service():
                                 review_count = 1
                                 total_reviews += 1
                                 
+                                # Schedule ALL remaining reviews with AlarmManager
+                                print("\n⏰ Scheduling AlarmManager for ALL reviews...")
+                                for i, interval in enumerate(INTERVALS):
+                                    review_num = i + 2  # Start from review #2
+                                    if schedule_alarm(mService, interval, review_num):
+                                        print(f"   ✓ Review #{review_num} → +{interval}s ({interval//60}m {interval%60}s)")
+                                
+                                alarms_scheduled = True
+                                
+                                # ALSO set timer for next play (double protection)
                                 if current_step < len(INTERVALS):
                                     next_play_time = time() + INTERVALS[current_step]
-                                    next_minutes = INTERVALS[current_step] // 60
-                                    next_seconds = INTERVALS[current_step] % 60
+                                    next_min = INTERVALS[current_step] // 60
+                                    next_sec = INTERVALS[current_step] % 60
                                     
-                                    print(f"✅ Review #1 done")
-                                    print(f"⏰ Next review in: {next_minutes}m {next_seconds}s")
+                                    print(f"\n✅ Review #1 done")
+                                    print(f"⏱️ Timer backup: next in {next_min}m {next_sec}s")
+                                    print("=" * 60 + "\n")
                                     
-                                    # تحديث الإشعار
-                                    update_notification = NotificationBuilder(mService, channel_id) \
-                                        .setContentTitle(f"🎯 Review #{review_count} Done") \
-                                        .setContentText(f"Next in {next_minutes}m {next_seconds}s") \
+                                    # Update notification
+                                    update_notif = NotificationBuilder(mService, channel_id) \
+                                        .setContentTitle(f"🎯 Review #1 Done") \
+                                        .setContentText(f"Next: {next_min}m {next_sec}s (AlarmManager active)") \
                                         .setSmallIcon(17301659) \
                                         .setOngoing(True) \
                                         .setPriority(2)
                                     
                                     if pending_intent:
-                                        update_notification.setContentIntent(pending_intent)
+                                        update_notif.setContentIntent(pending_intent)
                                     
-                                    nm.notify(1, update_notification.build())
+                                    nm.notify(1, update_notif.build())
                             else:
                                 print("❌ First review failed")
                             
-                            print("="*50 + "\n")
-                    
                     except Exception as e:
                         print(f"⚠️ Config read error: {e}")
                 
-                # التحقق من موعد التشغيل التالي
+                # Check timer for next play (backup to AlarmManager)
                 if loaded_file and next_play_time > 0:
                     current_time = time()
                     
                     if current_time >= next_play_time:
-                        # التأكد من WakeLock
+                        # Make sure WakeLock is held
                         if not wakelock.isHeld():
                             wakelock.acquire()
                             print("🔒 WakeLock re-acquired")
                         
                         review_number = review_count + 1
-                        print(f"\n🎵 Review #{review_number}...")
+                        print(f"\n🎵 Review #{review_number} (Timer backup)...")
                         
                         success = play_audio_ultimate(loaded_file)
                         
@@ -348,69 +419,52 @@ def run_service():
                             current_step += 1
                             
                             if current_step < len(INTERVALS):
-                                # لا يزال هناك مراجعات
+                                # More reviews remaining
                                 next_play_time = time() + INTERVALS[current_step]
-                                next_minutes = INTERVALS[current_step] // 60
-                                next_seconds = INTERVALS[current_step] % 60
+                                next_min = INTERVALS[current_step] // 60
+                                next_sec = INTERVALS[current_step] % 60
                                 
                                 print(f"✅ Review #{review_count} done")
-                                print(f"⏰ Next review in: {next_minutes}m {next_seconds}s\n")
+                                print(f"⏱️ Next: {next_min}m {next_sec}s\n")
                                 
-                                # تحديث الإشعار
-                                update_notification = NotificationBuilder(mService, channel_id) \
+                                # Update notification
+                                update_notif = NotificationBuilder(mService, channel_id) \
                                     .setContentTitle(f"🎯 Review #{review_count} Done") \
-                                    .setContentText(f"Next in {next_minutes}m {next_seconds}s") \
+                                    .setContentText(f"Next: {next_min}m {next_sec}s") \
                                     .setSmallIcon(17301659) \
                                     .setOngoing(True) \
                                     .setPriority(2)
                                 
                                 if pending_intent:
-                                    update_notification.setContentIntent(pending_intent)
+                                    update_notif.setContentIntent(pending_intent)
                                 
-                                nm.notify(1, update_notification.build())
+                                nm.notify(1, update_notif.build())
                             else:
-                                # انتهت جميع المراجعات
-                                print("\n" + "="*50)
+                                # All reviews completed!
+                                print("\n" + "=" * 60)
                                 print(f"🎉 All {review_count} reviews completed!")
-                                print("="*50 + "\n")
+                                print("=" * 60 + "\n")
                                 
                                 loaded_file = None
                                 next_play_time = 0
                                 current_step = 0
+                                alarms_scheduled = False
                                 
-                                # تحرير WakeLock
+                                # Cancel remaining alarms
+                                cancel_all_alarms(mService)
+                                
+                                # Release WakeLock
                                 if wakelock.isHeld():
                                     wakelock.release()
                                     print("🔓 WakeLock released")
                                 
-                                # إشعار الإكمال
-                                complete_notification = NotificationBuilder(mService, channel_id) \
+                                # Completion notification
+                                complete_notif = NotificationBuilder(mService, channel_id) \
                                     .setContentTitle("✅ Session Complete!") \
-                                    .setContentText(f"{review_count} reviews done successfully") \
+                                    .setContentText(f"{review_count} reviews done") \
                                     .setSmallIcon(17301659) \
                                     .setOngoing(False) \
                                     .build()
                                 
-                                nm.notify(1, complete_notification)
-                                
-                                review_count = 0
-                        else:
-                            print(f"❌ Review #{review_number} failed - will retry next cycle\n")
+                                nm.notify(1, complete_notif)
                 
-                # نوم قصير (1 ثانية)
-                sleep(1)
-            
-            except Exception as e:
-                print(f"⚠️ Loop error: {e}")
-                import traceback
-                traceback.print_exc()
-                sleep(3)
-    
-    except Exception as e:
-        print(f"💥 FATAL SERVICE ERROR: {e}")
-        import traceback
-        traceback.print_exc()
-
-
-if __name__ == '__main__':
-    run_service()
