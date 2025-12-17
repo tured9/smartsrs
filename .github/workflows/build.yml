@@ -3,13 +3,11 @@ name: Build SmartSRS v3.0
 on:
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     permissions:
       contents: read
       actions: write
@@ -18,7 +16,7 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Setup Python
+    - name: Setup Python 3.10
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
@@ -45,48 +43,61 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-buildozer-
 
-    - name: Install System Dependencies
+    - name: Install System Dependencies (required)
       run: |
         sudo apt-get update -qq
         sudo apt-get install -y --no-install-recommends \
-          git zip unzip openjdk-17-jdk python3-pip \
-          autoconf libtool pkg-config zlib1g-dev \
-          libncurses-dev libtinfo6 \
-          cmake libffi-dev libssl-dev libltdl-dev ccache \
-          libjpeg-dev libpng-dev
+          build-essential clang git zip unzip openjdk-17-jdk python3-pip \
+          python3.10-dev autoconf libtool pkg-config zlib1g-dev \
+          libncurses-dev libtinfo6 cmake libffi-dev libssl-dev libltdl-dev ccache \
+          libjpeg-dev libpng-dev libsqlite3-dev
+
     - name: Export JAVA_HOME
       run: |
         echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
         echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
 
-    - name: Install Python Tools
+    - name: Install Python Tools (Buildozer + specific p4a)
       run: |
-        pip3 install --upgrade pip
-        pip3 install --upgrade Cython==0.29.33
-        pip3 install --upgrade buildozer
-        pip3 install --upgrade virtualenv
+        python -m pip install --upgrade pip
+        pip install --upgrade cython==0.29.36
+        pip install --upgrade buildozer==1.5.0
+        # تثبيت نسخة p4a متوافقة
+        pip install --upgrade git+https://github.com/kivy/python-for-android@2023.09.16
 
-    - name: Make buildozer executable (if needed)
+    - name: Ensure buildozer executable
       run: |
         chmod +x $(which buildozer) || true
 
-    - name: Build APK
+    - name: Clean previous build (if any)
+      run: |
+        rm -rf .buildozer || true
+
+    - name: Build APK (single arch arm64-v8a, verbose, save log)
       env:
         BUILDOZER_WARN_ON_ROOT: 0
         APP_ANDROID_ACCEPT_SDK_LICENSE: 1
         GRADLE_OPTS: "-Xmx2048m -Dorg.gradle.jvmargs='-Xmx2048m'"
       run: |
-        # التشغيل الأول سيحمّل Android SDK/NDK — قد يستغرق وقتاً طويلاً
-        yes | buildozer -v android debug || buildozer -v android debug
+        set -o pipefail
+        # تبني أولًا لـ arm64-v8a لتقليل استهلاك المساحة والذاكرة
+        yes | buildozer -v android debug --arch=arm64-v8a 2>&1 | tee buildozer_full.log
 
-    - name: List Build Output
+    - name: Upload full build log (for debugging)
+      uses: actions/upload-artifact@v4
+      with:
+        name: buildozer_full_log
+        path: buildozer_full.log
+        retention-days: 7
+
+    - name: List build output
       run: |
-        echo "---- build output (bin/) ----"
+        echo "---- bin/ content ----"
         ls -lah bin/ || echo "No bin directory found"
         echo "---- .buildozer size ----"
         du -sh .buildozer || true
 
-    - name: Upload APK
+    - name: Upload APK (on success)
       if: success()
       uses: actions/upload-artifact@v4
       with:
@@ -94,12 +105,12 @@ jobs:
         path: bin/*.apk
         retention-days: 90
 
-    - name: Upload Logs on Failure
+    - name: Upload build files on failure
       if: failure()
       uses: actions/upload-artifact@v4
       with:
         name: build-failure-logs
         path: |
           .buildozer/**
-          *.log
+          buildozer_full.log
         retention-days: 7
