@@ -1,29 +1,37 @@
 [app]
+# الاسم
 title = SmartSRS
 package.name = smartsrs
 package.domain = org.mysrs
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,txt
-version = 1.1
 
-requirements = python3,kivy==2.2.1,android,pyjnius
+# الإصدار
+version = 1.0
 
-services = SRSService:service.py:foreground
+# المتطلبات (لاحظ إضافة android و pyjnius)
+requirements = python3,kivy,android,pyjnius
 
+# تعريف الخدمة (المحرك الخلفي)
+services = SRSService:service.py
+
+# الشاشة
 orientation = portrait
 fullscreen = 0
 
-android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,WAKE_LOCK,FOREGROUND_SERVICE,POST_NOTIFICATIONS
+# الأذونات (شاملة)
+android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,WAKE_LOCK,FOREGROUND_SERVICE,MODIFY_AUDIO_SETTINGS,ACCESS_NOTIFICATION_POLICY,POST_NOTIFICATIONS
 
-android.api = 31
+# إعدادات أندرويد (نستهدف 33 للاستقرار)
+android.api = 33
 android.minapi = 21
-android.ndk = 25b
 android.accept_sdk_license = True
 android.archs = arm64-v8a
 android.allow_backup = True
 
-p4a.branch = master
+# شاشة البداية
+android.presplash_color = #1f2330
 
 [buildozer]
 log_level = 2
-warn_on_root = 0
+warn_on_root = 1
