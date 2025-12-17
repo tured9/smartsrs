@@ -43,7 +43,7 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-buildozer-
 
-    - name: Install System Dependencies (required)
+    - name: Install System Dependencies
       run: |
         sudo apt-get update -qq
         sudo apt-get install -y --no-install-recommends \
@@ -57,19 +57,18 @@ jobs:
         echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
         echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
 
-    - name: Install Python Tools (Buildozer + specific p4a)
+    - name: Install Python Tools (Buildozer + p4a)
       run: |
         python -m pip install --upgrade pip
         pip install --upgrade cython==0.29.36
         pip install --upgrade buildozer==1.5.0
-        # تثبيت نسخة p4a متوافقة
-        pip install --upgrade git+https://github.com/kivy/python-for-android@2023.09.16
+        pip install --upgrade git+https://github.com/kivy/python-for-android@master
 
     - name: Ensure buildozer executable
       run: |
         chmod +x $(which buildozer) || true
 
-    - name: Clean previous build (if any)
+    - name: Clean previous build
       run: |
         rm -rf .buildozer || true
 
@@ -80,10 +79,10 @@ jobs:
         GRADLE_OPTS: "-Xmx2048m -Dorg.gradle.jvmargs='-Xmx2048m'"
       run: |
         set -o pipefail
-        # تبني أولًا لـ arm64-v8a لتقليل استهلاك المساحة والذاكرة
+        # نبني أولاً arm64 لتقليل مشاكل الموارد
         yes | buildozer -v android debug --arch=arm64-v8a 2>&1 | tee buildozer_full.log
 
-    - name: Upload full build log (for debugging)
+    - name: Upload full build log
       uses: actions/upload-artifact@v4
       with:
         name: buildozer_full_log
