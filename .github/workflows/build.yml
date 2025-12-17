@@ -1,4 +1,4 @@
-name: Build SmartSRS Final
+name: Build SmartSRS Stable
 on:
   push:
     branches: [ main, master ]
@@ -11,7 +11,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. إعداد الجافا 17 (ضروري لـ API 33)
+      # 1. استخدام جافا 17 (ضروري لأندرويد 13)
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
@@ -30,26 +30,23 @@ jobs:
             libltdl-dev libffi-dev libssl-dev autoconf automake libtool pkg-config \
             autoconf-archive
 
-      # 3. تثبيت الأدوات (هنا الحل السحري)
-      - name: Install Buildozer & P4A
+      # 3. التثبيت (العودة للنسخ المستقرة لحل المشكلة)
+      - name: Install Buildozer & Cython
         run: |
           pip3 install --upgrade pip
-          # إجبار النظام على استخدام نسخة Cython القديمة المتوافقة مع Kivy
           pip3 install "cython==0.29.33"
-          
-          # تثبيت Buildozer و P4A من المصدر الرئيسي
-          pip3 install https://github.com/kivy/python-for-android/archive/master.zip
-          pip3 install https://github.com/kivy/buildozer/archive/master.zip
+          pip3 install "buildozer==1.5.0"
+          # لن نثبت p4a هنا، سنترك Buildozer يحمله عبر ملف spec
 
-      # 4. تنظيف
+      # 4. تنظيف الكاش
       - name: Clean Build
         run: |
           rm -rf .buildozer bin
 
-      # 5. البناء
+      # 5. البناء (مع استخدام -v لرؤية التفاصيل)
       - name: Build APK
         run: |
-          yes | buildozer android debug
+          yes | buildozer -v android debug
 
       # 6. الرفع
       - name: Upload APK
