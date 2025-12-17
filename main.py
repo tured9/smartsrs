@@ -1,6 +1,6 @@
 """
-Smart SRS - النسخة النهائية المحسّنة
-تحسينات قوية جداً للعمل في الخلفية بشكل موثوق 100%
+Smart SRS - Final Version with AlarmManager
+Complete English Interface
 """
 
 from kivy.app import App
@@ -16,17 +16,18 @@ if platform == 'android':
     from jnius import autoclass, cast
     from android.permissions import request_permissions, Permission
     
-    # طلب جميع الأذونات الضرورية
+    # Request all necessary permissions
     request_permissions([
         Permission.READ_EXTERNAL_STORAGE,
         Permission.WRITE_EXTERNAL_STORAGE,
         Permission.FOREGROUND_SERVICE,
         Permission.WAKE_LOCK,
         Permission.POST_NOTIFICATIONS,
-        Permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+        Permission.SCHEDULE_EXACT_ALARM,
+        Permission.USE_EXACT_ALARM
     ])
     
-    # تعطيل تحسين البطارية تلقائياً
+    # Disable battery optimization
     try:
         PythonActivity = autoclass('org.kivy.android.PythonActivity')
         activity = PythonActivity.mActivity
@@ -38,30 +39,29 @@ if platform == 'android':
         
         pm = activity.getSystemService(Context.POWER_SERVICE)
         
-        # التحقق إذا كان Battery Optimization مفعل
         if hasattr(pm, 'isIgnoringBatteryOptimizations'):
             if not pm.isIgnoringBatteryOptimizations(activity.getPackageName()):
-                print("Battery optimization is ON - opening settings")
                 intent = Intent()
                 intent.setAction(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
                 intent.setData(Uri.parse("package:" + activity.getPackageName()))
                 try:
                     activity.startActivity(intent)
+                    print("✅ Battery optimization request opened")
                 except:
-                    print("Could not open battery settings automatically")
+                    print("⚠️ Could not open battery settings")
     except Exception as e:
-        print(f"Battery optimization check error: {e}")
+        print(f"Battery check error: {e}")
     
-    # بدء الخدمة
+    # Start service
     try:
         service = autoclass('org.mysrs.smartsrs.ServiceSrsservice')
         mActivity = autoclass('org.kivy.android.PythonActivity').mActivity
         service.start(mActivity, '')
-        print("✅ Service started successfully!")
+        print("✅ Service started successfully")
     except Exception as e:
         print(f"❌ Service start error: {e}")
 
-# الألوان
+# Colors
 COLOR_BG = (0.08, 0.10, 0.14, 1)
 COLOR_PRIMARY = (0.2, 0.7, 0.9, 1)
 COLOR_DANGER = (0.95, 0.25, 0.25, 1)
@@ -78,10 +78,10 @@ class SRSPlayer(App):
         self.config_path = os.path.join(app_dir, "srs_config.txt")
         self.is_running = False
         
-        # التخطيط الرئيسي
+        # Main layout
         layout = BoxLayout(orientation='vertical', padding=25, spacing=18)
         
-        # العنوان الرئيسي
+        # Main title
         title = Label(
             text="🎯 Smart Review System",
             size_hint=(1, 0.09),
@@ -91,18 +91,18 @@ class SRSPlayer(App):
         )
         layout.add_widget(title)
         
-        # شعار النظام
+        # Subtitle
         subtitle = Label(
-            text="المراجعة المتباعدة الذكية",
+            text="Spaced Repetition Made Easy",
             size_hint=(1, 0.05),
             font_size='15sp',
             color=(0.7, 0.7, 0.7, 1)
         )
         layout.add_widget(subtitle)
         
-        # معلومات الحالة
+        # Status label
         self.status_label = Label(
-            text="📁 اختر ملف صوتي للبدء",
+            text="📁 Select an audio file to begin",
             size_hint=(1, 0.08),
             font_size='17sp',
             color=COLOR_TEXT,
@@ -110,11 +110,11 @@ class SRSPlayer(App):
         )
         layout.add_widget(self.status_label)
         
-        # معلومات الفترات الزمنية
+        # Review schedule info
         intervals_box = BoxLayout(orientation='vertical', size_hint=(1, 0.12), spacing=5)
         
         intervals_title = Label(
-            text="⏱️ جدول المراجعة:",
+            text="⏱️ Review Schedule:",
             size_hint=(1, 0.4),
             font_size='15sp',
             color=COLOR_WARNING,
@@ -123,7 +123,7 @@ class SRSPlayer(App):
         intervals_box.add_widget(intervals_title)
         
         intervals_text = Label(
-            text="10 ثانية → دقيقة → 5 دقائق → 30 دقيقة → ساعة",
+            text="10 sec → 1 min → 5 min → 30 min → 1 hour",
             size_hint=(1, 0.6),
             font_size='13sp',
             color=(0.8, 0.8, 0.8, 1)
@@ -132,7 +132,7 @@ class SRSPlayer(App):
         
         layout.add_widget(intervals_box)
         
-        # مستعرض الملفات
+        # File chooser
         chooser_container = BoxLayout(size_hint=(1, 0.5), padding=5)
         
         self.file_chooser = FileChooserIconView(
@@ -144,9 +144,9 @@ class SRSPlayer(App):
         
         layout.add_widget(chooser_container)
         
-        # زر البدء/الإيقاف
+        # Start/Stop button
         self.action_button = Button(
-            text="▶️ ابدأ المراجعة",
+            text="▶️ START REVIEW",
             size_hint=(1, 0.13),
             background_normal='',
             background_color=COLOR_SUCCESS,
@@ -156,9 +156,9 @@ class SRSPlayer(App):
         self.action_button.bind(on_press=self.toggle_session)
         layout.add_widget(self.action_button)
         
-        # نصيحة مهمة
+        # Important tip
         tip_label = Label(
-            text="💡 تأكد من تعطيل تحسين البطارية للتطبيق",
+            text="💡 Make sure to disable battery optimization",
             size_hint=(1, 0.06),
             font_size='12sp',
             color=(0.6, 0.6, 0.6, 1),
@@ -169,46 +169,46 @@ class SRSPlayer(App):
         return layout
     
     def toggle_session(self, instance):
-        """بدء أو إيقاف جلسة المراجعة"""
+        """Start or stop review session"""
         if not self.is_running:
-            # بدء الجلسة
+            # Start session
             if self.file_chooser.selection:
                 file_path = self.file_chooser.selection[0]
                 file_name = os.path.basename(file_path)
                 
                 try:
-                    # كتابة مسار الملف
+                    # Write file path
                     with open(self.config_path, "w", encoding='utf-8') as f:
                         f.write(file_path)
                     
                     self.is_running = True
-                    self.action_button.text = "⏸️ أوقف المراجعة"
+                    self.action_button.text = "⏸️ STOP REVIEW"
                     self.action_button.background_color = COLOR_DANGER
                     
-                    # عرض اسم الملف (مختصر)
+                    # Show file name (truncated)
                     short_name = file_name[:30] + "..." if len(file_name) > 30 else file_name
-                    self.status_label.text = f"🎵 جاري المراجعة: {short_name}"
+                    self.status_label.text = f"🎵 Reviewing: {short_name}"
                     self.status_label.color = COLOR_SUCCESS
                     
                     print(f"✅ Session started: {file_path}")
                     
                 except Exception as e:
                     print(f"❌ Error starting session: {e}")
-                    self.status_label.text = "❌ خطأ في بدء الجلسة"
+                    self.status_label.text = "❌ Error starting session"
                     self.status_label.color = COLOR_DANGER
             else:
-                self.status_label.text = "⚠️ الرجاء اختيار ملف أولاً"
+                self.status_label.text = "⚠️ Please select a file first"
                 self.status_label.color = COLOR_WARNING
         else:
-            # إيقاف الجلسة
+            # Stop session
             try:
                 with open(self.config_path, "w", encoding='utf-8') as f:
                     f.write("STOP")
                 
                 self.is_running = False
-                self.action_button.text = "▶️ ابدأ المراجعة"
+                self.action_button.text = "▶️ START REVIEW"
                 self.action_button.background_color = COLOR_SUCCESS
-                self.status_label.text = "⏹️ تم إيقاف الجلسة"
+                self.status_label.text = "⏹️ Session stopped"
                 self.status_label.color = (0.7, 0.7, 0.7, 1)
                 
                 print("⏹️ Session stopped")
@@ -219,5 +219,3 @@ class SRSPlayer(App):
 
 if __name__ == '__main__':
     SRSPlayer().run()
-
-
