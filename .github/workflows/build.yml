@@ -1,4 +1,4 @@
-name: Build SmartSRS Fix
+name: Build SmartSRS Ultimate
 on:
   push:
     branches: [ main, master ]
@@ -8,19 +8,18 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      # 1. سحب الكود
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 2. إعداد الجافا 17 (الطريقة الرسمية الصحيحة)
+      # استخدام جافا 17 (ضروري للكود الخاص بك)
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # 3. تثبيت مكتبات النظام الضرورية
-      - name: Install System Dependencies
+      # تثبيت المكتبات
+      - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -31,27 +30,26 @@ jobs:
             libltdl-dev libffi-dev libssl-dev autoconf automake libtool pkg-config \
             autoconf-archive
 
-      # 4. تثبيت Buildozer (النسخة الحديثة Master) و Cython
-      - name: Install Buildozer & Cython
+      # --- الحل الجذري لمشكلة البناء ---
+      # نثبت p4a master و buildozer master يدوياً
+      - name: Install Buildozer & P4A
         run: |
           pip3 install --upgrade pip
-          pip3 install --user --upgrade "cython<3.0.0" 
+          pip3 install --user --upgrade "cython<3.0.0"
+          pip3 install --upgrade https://github.com/kivy/python-for-android/archive/master.zip
           pip3 install --upgrade https://github.com/kivy/buildozer/archive/master.zip
-          
-      # 5. تنظيف أي بناء سابق فاسد
+
       - name: Clean Build
         run: |
           rm -rf .buildozer bin
 
-      # 6. بدء البناء
       - name: Build APK
         run: |
           yes | buildozer android debug
 
-      # 7. رفع التطبيق
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: SmartSRS-APK
+          name: SmartSRS-Ultimate
           path: bin/*.apk
