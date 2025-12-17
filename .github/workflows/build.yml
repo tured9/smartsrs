@@ -1,4 +1,4 @@
-name: Build SmartSRS APK
+name: Build SmartSRS v3.0
 
 on:
   push:
@@ -10,111 +10,81 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      actions: write
-
+    
     steps:
-    - name: Checkout repository
+    - name: Checkout Code
       uses: actions/checkout@v4
-
+    
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-
-    - name: Get Date for Cache
+    
+    - name: Get Cache Date
       id: get-date
       run: |
         echo "date=$(/bin/date -u '+%Y%m%d')" >> $GITHUB_OUTPUT
       shell: bash
-
-    - name: Cache Buildozer global directory
+    
+    - name: Cache Buildozer Global
       uses: actions/cache@v4
       with:
         path: .buildozer_global
         key: buildozer-global-${{ hashFiles('buildozer.spec') }}
         restore-keys: |
           buildozer-global-
-
-    - name: Cache .buildozer (build artifacts)
+    
+    - name: Cache Buildozer Build
       uses: actions/cache@v4
       with:
         path: .buildozer
         key: ${{ runner.os }}-buildozer-${{ steps.get-date.outputs.date }}-${{ hashFiles('buildozer.spec') }}
         restore-keys: |
           ${{ runner.os }}-buildozer-
-
-    - name: Install system dependencies
+    
+    - name: Install System Dependencies
       run: |
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends \
-          git \
-          zip \
-          unzip \
-          openjdk-17-jdk \
-          python3-pip \
-          autoconf \
-          libtool \
-          pkg-config \
-          zlib1g-dev \
-          libncurses-dev \
-          libtinfo6 \
-          cmake \
-          libffi-dev \
-          libssl-dev \
-          libltdl-dev \
-          ccache \
-          libjpeg-dev \
-          libpng-dev
-      # ضبط JAVA_HOME لتجنّب مشاكل Gradle
-    - name: Export JAVA_HOME
-      run: |
-        echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
-        echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
-
-    - name: Install Python dependencies (Buildozer & Cython)
+        sudo apt-get update -qq
+        sudo apt-get install -y \
+          git zip unzip openjdk-17-jdk python3-pip \
+          autoconf libtool pkg-config zlib1g-dev \
+          libncurses5-dev libncursesw5-dev libtinfo5 \
+          cmake libffi-dev libssl-dev libltdl-dev ccache
+    
+    - name: Install Python Tools
       run: |
         pip3 install --upgrade pip
         pip3 install --upgrade Cython==0.29.33
         pip3 install --upgrade buildozer
         pip3 install --upgrade virtualenv
-
-    - name: Make buildozer executable (if needed)
+    
+    - name: Build APK
       run: |
-        chmod +x $(which buildozer) || true
-
-    - name: Build APK with Buildozer
+        yes | buildozer -v android debug || buildozer -v android debug
       env:
         BUILDOZER_WARN_ON_ROOT: 0
         APP_ANDROID_ACCEPT_SDK_LICENSE: 1
         GRADLE_OPTS: "-Xmx2048m -Dorg.gradle.jvmargs='-Xmx2048m'"
+    
+    - name: List Build Output
       run: |
-        # أول تشغيل قد يحمل Android SDK/NDK ويستغرق وقتًا طويلاً
-        # نمرر "yes" للتأكيد على أي مدخلات
-        yes | buildozer -v android debug || buildozer -v android debug
-
-    - name: List build output
-      run: |
-        echo "---- bin/ content ----"
-        ls -lah bin/ || echo "No bin directory found"
-        echo "---- .buildozer dir summary ----"
-        du -sh .buildozer || true
-
-    - name: Upload APK artifact (on success)
-      if: success()
+        echo "✅ Build completed!"
+        ls -lah bin/ || echo "No bin directory"
+    
+    - name: Upload APK
       uses: actions/upload-artifact@v4
+      if: success()
       with:
-        name: SmartSRS-v2.0-APK
+        name: SmartSRS-v3.0-Ultimate
         path: bin/*.apk
         retention-days: 90
-
-    - name: Upload build logs and buildozer folder (on failure)
-      if: failure()
+    
+    - name: Upload Logs on Failure
       uses: actions/upload-artifact@v4
+      if: failure()
       with:
-        name: build-logs
+        name: build-failure-logs
         path: |
-          .buildozer/**
+          .buildozer/android/platform/build-*/
           *.log
         retention-days: 7
