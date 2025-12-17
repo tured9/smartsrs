@@ -10,22 +10,25 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
+      actions: write
+
     steps:
     - name: Checkout Code
       uses: actions/checkout@v4
-    
+
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    
+
     - name: Get Cache Date
       id: get-date
       run: |
         echo "date=$(/bin/date -u '+%Y%m%d')" >> $GITHUB_OUTPUT
       shell: bash
-    
+
     - name: Cache Buildozer Global
       uses: actions/cache@v4
       with:
@@ -33,7 +36,7 @@ jobs:
         key: buildozer-global-${{ hashFiles('buildozer.spec') }}
         restore-keys: |
           buildozer-global-
-    
+
     - name: Cache Buildozer Build
       uses: actions/cache@v4
       with:
@@ -41,50 +44,62 @@ jobs:
         key: ${{ runner.os }}-buildozer-${{ steps.get-date.outputs.date }}-${{ hashFiles('buildozer.spec') }}
         restore-keys: |
           ${{ runner.os }}-buildozer-
-    
+
     - name: Install System Dependencies
       run: |
         sudo apt-get update -qq
-        sudo apt-get install -y \
+        sudo apt-get install -y --no-install-recommends \
           git zip unzip openjdk-17-jdk python3-pip \
           autoconf libtool pkg-config zlib1g-dev \
-          libncurses5-dev libncursesw5-dev libtinfo5 \
-          cmake libffi-dev libssl-dev libltdl-dev ccache
-    
+          libncurses-dev libtinfo6 \
+          cmake libffi-dev libssl-dev libltdl-dev ccache \
+          libjpeg-dev libpng-dev
+    - name: Export JAVA_HOME
+      run: |
+        echo "JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64" >> $GITHUB_ENV
+        echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
+
     - name: Install Python Tools
       run: |
         pip3 install --upgrade pip
         pip3 install --upgrade Cython==0.29.33
         pip3 install --upgrade buildozer
         pip3 install --upgrade virtualenv
-    
-    - name: Build APK
+
+    - name: Make buildozer executable (if needed)
       run: |
-        yes | buildozer -v android debug || buildozer -v android debug
+        chmod +x $(which buildozer) || true
+
+    - name: Build APK
       env:
         BUILDOZER_WARN_ON_ROOT: 0
         APP_ANDROID_ACCEPT_SDK_LICENSE: 1
         GRADLE_OPTS: "-Xmx2048m -Dorg.gradle.jvmargs='-Xmx2048m'"
-    
+      run: |
+        # التشغيل الأول سيحمّل Android SDK/NDK — قد يستغرق وقتاً طويلاً
+        yes | buildozer -v android debug || buildozer -v android debug
+
     - name: List Build Output
       run: |
-        echo "✅ Build completed!"
-        ls -lah bin/ || echo "No bin directory"
-    
+        echo "---- build output (bin/) ----"
+        ls -lah bin/ || echo "No bin directory found"
+        echo "---- .buildozer size ----"
+        du -sh .buildozer || true
+
     - name: Upload APK
-      uses: actions/upload-artifact@v4
       if: success()
+      uses: actions/upload-artifact@v4
       with:
         name: SmartSRS-v3.0-Ultimate
         path: bin/*.apk
         retention-days: 90
-    
+
     - name: Upload Logs on Failure
-      uses: actions/upload-artifact@v4
       if: failure()
+      uses: actions/upload-artifact@v4
       with:
         name: build-failure-logs
         path: |
-          .buildozer/android/platform/build-*/
+          .buildozer/**
           *.log
         retention-days: 7
