@@ -1,61 +1,63 @@
-name: Build SmartSRS Final Fix
+name: Build SmartSRS
+
 on:
   push:
     branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
-
+    runs-on: ubuntu-latest
+    
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      # استخدام جافا 17 (ضروري لـ API 33)
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      # تثبيت المكتبات وتنظيف المساحة
-      - name: Install System Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            python3-pip build-essential git python3-dev \
-            libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
-            libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
-            zlib1g-dev unzip zip \
-            libltdl-dev libffi-dev libssl-dev autoconf automake libtool pkg-config \
-            autoconf-archive
-
-      # --- التعديل الحاسم هنا ---
-      # 1. تحديث pip
-      # 2. تثبيت Cython المتوافق
-      # 3. تثبيت python-for-android Master (لحل مشكلة AAB)
-      # 4. تثبيت buildozer Master
-      - name: Install Buildozer & P4A
-        run: |
-          pip3 install --upgrade pip
-          pip3 install --user --upgrade "cython<3.0.0"
-          pip3 install --upgrade https://github.com/kivy/python-for-android/archive/master.zip
-          pip3 install --upgrade https://github.com/kivy/buildozer/archive/master.zip
-
-      # تنظيف
-      - name: Clean Build
-        run: |
-          rm -rf .buildozer bin
-
-      # البناء
-      - name: Build APK
-        run: |
-          yes | buildozer android debug
-
-      # الرفع
-      - name: Upload APK
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: SmartSRS-APK
-          path: bin/*.apk
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+    
+    - name: Setup Java 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+    
+    - name: Cache Buildozer
+      uses: actions/cache@v4
+      with:
+        path: |
+          .buildozer
+          .buildozer_global
+        key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-buildozer-
+    
+    - name: Install System Dependencies
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y \
+          git zip unzip openjdk-17-jdk \
+          autoconf libtool pkg-config zlib1g-dev \
+          libncurses5-dev libncursesw5-dev libtinfo5 \
+          cmake libffi-dev libssl-dev libltdl-dev
+    
+    - name: Install Buildozer
+      run: |
+        pip install --upgrade pip
+        pip install --upgrade Cython==0.29.33
+        pip install --upgrade buildozer
+    
+    - name: Build APK
+      run: |
+        buildozer android debug
+      env:
+        JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+    
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: SmartSRS-APK
+        path: bin/*.apk
