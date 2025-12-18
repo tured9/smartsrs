@@ -1,4 +1,4 @@
-name: Build SmartSRS Stable
+name: Build SmartSRS Final Fix
 on:
   push:
     branches: [ main, master ]
@@ -11,14 +11,14 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. استخدام جافا 17 (ضروري لأندرويد 13)
+      # استخدام جافا 17 (ضروري لـ API 33)
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # 2. تنظيف وإعداد النظام
+      # تثبيت المكتبات وتنظيف المساحة
       - name: Install System Dependencies
         run: |
           sudo apt-get update
@@ -30,25 +30,29 @@ jobs:
             libltdl-dev libffi-dev libssl-dev autoconf automake libtool pkg-config \
             autoconf-archive
 
-      # 3. التثبيت (العودة للنسخ المستقرة لحل المشكلة)
-      - name: Install Buildozer & Cython
+      # --- التعديل الحاسم هنا ---
+      # 1. تحديث pip
+      # 2. تثبيت Cython المتوافق
+      # 3. تثبيت python-for-android Master (لحل مشكلة AAB)
+      # 4. تثبيت buildozer Master
+      - name: Install Buildozer & P4A
         run: |
           pip3 install --upgrade pip
-          pip3 install "cython==0.29.33"
-          pip3 install "buildozer==1.5.0"
-          # لن نثبت p4a هنا، سنترك Buildozer يحمله عبر ملف spec
+          pip3 install --user --upgrade "cython<3.0.0"
+          pip3 install --upgrade https://github.com/kivy/python-for-android/archive/master.zip
+          pip3 install --upgrade https://github.com/kivy/buildozer/archive/master.zip
 
-      # 4. تنظيف الكاش
+      # تنظيف
       - name: Clean Build
         run: |
           rm -rf .buildozer bin
 
-      # 5. البناء (مع استخدام -v لرؤية التفاصيل)
+      # البناء
       - name: Build APK
         run: |
-          yes | buildozer -v android debug
+          yes | buildozer android debug
 
-      # 6. الرفع
+      # الرفع
       - name: Upload APK
         if: success()
         uses: actions/upload-artifact@v4
