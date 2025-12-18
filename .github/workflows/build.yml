@@ -9,7 +9,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-22.04
-    timeout-minutes: 90  # Kill if takes more than 90 minutes
+    timeout-minutes: 120  # 2 hours total
     
     steps:
       - name: Checkout Code
@@ -26,15 +26,15 @@ jobs:
         with:
           python-version: '3.10'
       
-      - name: Cache Buildozer Global Directory
+      - name: Cache Buildozer Global
         uses: actions/cache@v4
         with:
           path: ~/.buildozer
-          key: buildozer-${{ hashFiles('buildozer.spec') }}
+          key: buildozer-global-${{ hashFiles('buildozer.spec') }}
           restore-keys: |
-            buildozer-
+            buildozer-global-
       
-      - name: Cache Buildozer Local Directory
+      - name: Cache Buildozer Local
         uses: actions/cache@v4
         with:
           path: .buildozer
@@ -43,31 +43,43 @@ jobs:
             buildozer-local-
       
       - name: Install System Dependencies
-        timeout-minutes: 10
+        timeout-minutes: 15
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y \
             python3-pip build-essential git python3-dev \
             libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
             libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
-            zlib1g-dev unzip zip \
+            zlib1g-dev unzip zip ccache \
             libltdl-dev libffi-dev libssl-dev autoconf automake libtool pkg-config
       
-      - name: Install Buildozer & Dependencies
+      - name: Setup ccache
+        run: |
+          echo "/usr/lib/ccache" >> $GITHUB_PATH
+          ccache --set-config=max_size=2G
+          ccache --zero-stats
+      
+      - name: Install Buildozer
         timeout-minutes: 10
         run: |
-          pip3 install --upgrade pip
+          pip3 install --upgrade pip setuptools wheel
           pip3 install --upgrade "cython<3.0.0"
           pip3 install --upgrade buildozer
       
-      - name: Clean Previous Builds
+      - name: Clean Previous Build
         run: |
           rm -rf bin
       
-      - name: Build APK
-        timeout-minutes: 60
+      - name: Build APK with Parallel Jobs
+        timeout-minutes: 90
+        env:
+          MAKEFLAGS: "-j4"
         run: |
           buildozer -v android debug
+      
+      - name: Show ccache stats
+        if: always()
+        run: ccache --show-stats
       
       - name: Upload APK
         if: success()
