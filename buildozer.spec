@@ -4,7 +4,7 @@ package.name = smartsrs
 package.domain = org.mysrs
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,txt,mp3,wav,ogg,m4a
-version = 4.0
+version = 5.0
 
 # المتطلبات
 requirements = python3,kivy==2.2.1,android,pyjnius
@@ -30,7 +30,7 @@ android.allow_backup = True
 android.manifest_placeholders = {"USE_EXACT_ALARM": "true", "SCHEDULE_EXACT_ALARM": "true"}
 android.entrypoint = org.kivy.android.PythonActivity
 
-# --- هذا السطر هو الأهم: استخدام نسخة المطورين من P4A ---
+# --- ضروري جداً ---
 p4a.branch = master
 
 [buildozer]
