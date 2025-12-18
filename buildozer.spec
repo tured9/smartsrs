@@ -3,38 +3,38 @@ title = SmartSRS
 package.name = smartsrs
 package.domain = org.mysrs
 source.dir = .
-source.include_exts = py,png,jpg,kv,atlas,txt,mp3,wav,ogg,m4a
+source.include_exts = py,png,jpg,kv,atlas,txt
 version = 1.0
 
 # Requirements
 requirements = python3,kivy==2.2.1,android,pyjnius
 
-# Services
+# Service
 services = SRSService:service.py:foreground
 
-# Orientation
 orientation = portrait
 fullscreen = 0
 
-# Permissions
-android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,WAKE_LOCK,FOREGROUND_SERVICE,POST_NOTIFICATIONS,REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,MODIFY_AUDIO_SETTINGS,ACCESS_NOTIFICATION_POLICY,SCHEDULE_EXACT_ALARM,USE_EXACT_ALARM,FOREGROUND_SERVICE_MEDIA_PLAYBACK
+# Permissions for Android 14
+android.permissions = INTERNET,READ_MEDIA_AUDIO,WRITE_EXTERNAL_STORAGE,WAKE_LOCK,FOREGROUND_SERVICE,FOREGROUND_SERVICE_MEDIA_PLAYBACK,POST_NOTIFICATIONS,SCHEDULE_EXACT_ALARM,USE_EXACT_ALARM
 
-# Android Settings
-android.api = 31
-android.minapi = 21
+# Android 14 compatible settings
+android.api = 34
+android.minapi = 24
 android.ndk = 25b
 android.accept_sdk_license = True
 
-# Single architecture for faster build
+# arm64 only (your phone is Unisoc T603)
 android.archs = arm64-v8a
 
-# Advanced Settings
 android.allow_backup = True
-android.entrypoint = org.kivy.android.PythonActivity
 
-# P4A settings
+# Android 14 needs this
+android.gradle_dependencies = androidx.core:core:1.12.0
+
+# Use master
 p4a.branch = master
 
 [buildozer]
 log_level = 2
-warn_on_root = 1
+warn_on_root = 0
