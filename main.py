@@ -1,5 +1,5 @@
 """
-Smart SRS - Ultimate Version with Timer Enforcement
+Smart SRS - Ultimate Crash-Proof Version
 Full English Interface
 """
 
@@ -16,17 +16,20 @@ if platform == 'android':
     from jnius import autoclass
     from android.permissions import request_permissions, Permission
     
-    request_permissions([
-        Permission.READ_EXTERNAL_STORAGE,
-        Permission.WRITE_EXTERNAL_STORAGE,
-        Permission.FOREGROUND_SERVICE,
-        Permission.WAKE_LOCK,
-        Permission.POST_NOTIFICATIONS,
-        Permission.SCHEDULE_EXACT_ALARM,
-        Permission.USE_EXACT_ALARM
-    ])
+    try:
+        request_permissions([
+            Permission.READ_EXTERNAL_STORAGE,
+            Permission.WRITE_EXTERNAL_STORAGE,
+            Permission.FOREGROUND_SERVICE,
+            Permission.WAKE_LOCK,
+            Permission.POST_NOTIFICATIONS,
+            Permission.SCHEDULE_EXACT_ALARM,
+            Permission.USE_EXACT_ALARM
+        ])
+    except Exception as e:
+        print(f"Permission error: {e}")
 
-# Colors for UI
+# Colors
 COLOR_BG = (0.12, 0.14, 0.19, 1)
 COLOR_BTN_START = (0.0, 0.7, 0.8, 1)
 COLOR_BTN_STOP = (0.9, 0.3, 0.3, 1)
@@ -37,7 +40,6 @@ class SRSPlayer(App):
     def build(self):
         Window.clearcolor = COLOR_BG
         
-        self.sound = None
         self.is_running = False
         
         app_dir = os.path.dirname(os.path.abspath(__file__))
@@ -78,24 +80,28 @@ class SRSPlayer(App):
         return layout
 
     def toggle_session(self, instance):
-        if not self.is_running:
-            if self.chooser.selection:
-                file_path = self.chooser.selection[0]
-                with open(self.config_path, "w") as f:
-                    f.write(file_path)
-                self.is_running = True
-                self.btn_action.text = "STOP SESSION"
-                self.btn_action.background_color = COLOR_BTN_STOP
-                self.lbl_info.text = "Session started!"
+        try:
+            if not self.is_running:
+                if self.chooser.selection:
+                    file_path = self.chooser.selection[0]
+                    with open(self.config_path, "w") as f:
+                        f.write(file_path)
+                    self.is_running = True
+                    self.btn_action.text = "STOP SESSION"
+                    self.btn_action.background_color = COLOR_BTN_STOP
+                    self.lbl_info.text = "Session started!"
+                else:
+                    self.lbl_info.text = "Please select a file first!"
             else:
-                self.lbl_info.text = "Please select a file first!"
-        else:
-            with open(self.config_path, "w") as f:
-                f.write("STOP")
-            self.is_running = False
-            self.btn_action.text = "START SESSION"
-            self.btn_action.background_color = COLOR_BTN_START
-            self.lbl_info.text = "Session stopped."
+                with open(self.config_path, "w") as f:
+                    f.write("STOP")
+                self.is_running = False
+                self.btn_action.text = "START SESSION"
+                self.btn_action.background_color = COLOR_BTN_START
+                self.lbl_info.text = "Session stopped."
+        except Exception as e:
+            self.lbl_info.text = "Error: Try again"
+            print(f"Toggle error: {e}")
 
 if __name__ == '__main__':
     SRSPlayer().run()
