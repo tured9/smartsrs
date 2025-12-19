@@ -15,7 +15,7 @@ fullscreen = 0
 
 android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,WAKE_LOCK,FOREGROUND_SERVICE,POST_NOTIFICATIONS,REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,MODIFY_AUDIO_SETTINGS,ACCESS_NOTIFICATION_POLICY,SCHEDULE_EXACT_ALARM,USE_EXACT_ALARM
 
-android.api = 31  # Stable for 2025
+android.api = 31  # Stable for 2025, avoids API 34 issues
 android.minapi = 21
 android.ndk = 25b
 android.accept_sdk_license = True
