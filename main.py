@@ -1,5 +1,5 @@
 """
-Smart SRS - Ultimate Crash-Proof Version
+Smart SRS - Ultimate Crash-Proof Version with Forced Timer
 Full English Interface
 """
 
@@ -104,4 +104,7 @@ class SRSPlayer(App):
             print(f"Toggle error: {e}")
 
 if __name__ == '__main__':
-    SRSPlayer().run()
+    try:
+        SRSPlayer().run()
+    except Exception as e:
+        print(f"App run error: {e}")
