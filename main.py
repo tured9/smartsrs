@@ -1,6 +1,6 @@
 """
-Smart SRS - Final Version with AlarmManager
-Complete English Interface
+Smart SRS - Fixed Version
+Stable startup with proper error handling
 """
 
 from kivy.app import App
@@ -11,55 +11,24 @@ from kivy.uix.filechooser import FileChooserIconView
 from kivy.utils import platform
 from kivy.core.window import Window
 import os
+import traceback
 
+# Android-specific imports
+PythonActivity = None
 if platform == 'android':
-    from jnius import autoclass, cast
-    from android.permissions import request_permissions, Permission
-    
-    # Request all necessary permissions
-    request_permissions([
-        Permission.READ_EXTERNAL_STORAGE,
-        Permission.WRITE_EXTERNAL_STORAGE,
-        Permission.FOREGROUND_SERVICE,
-        Permission.WAKE_LOCK,
-        Permission.POST_NOTIFICATIONS,
-        Permission.SCHEDULE_EXACT_ALARM,
-        Permission.USE_EXACT_ALARM
-    ])
-    
-    # Disable battery optimization
     try:
+        from android.permissions import request_permissions, Permission
+        from jnius import autoclass, cast
+        
+        # Request basic permissions first
+        request_permissions([
+            Permission.READ_EXTERNAL_STORAGE,
+            Permission.WRITE_EXTERNAL_STORAGE,
+        ])
+        
         PythonActivity = autoclass('org.kivy.android.PythonActivity')
-        activity = PythonActivity.mActivity
-        Intent = autoclass('android.content.Intent')
-        Settings = autoclass('android.provider.Settings')
-        Uri = autoclass('android.net.Uri')
-        PowerManager = autoclass('android.os.PowerManager')
-        Context = autoclass('android.content.Context')
-        
-        pm = activity.getSystemService(Context.POWER_SERVICE)
-        
-        if hasattr(pm, 'isIgnoringBatteryOptimizations'):
-            if not pm.isIgnoringBatteryOptimizations(activity.getPackageName()):
-                intent = Intent()
-                intent.setAction(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
-                intent.setData(Uri.parse("package:" + activity.getPackageName()))
-                try:
-                    activity.startActivity(intent)
-                    print("✅ Battery optimization request opened")
-                except:
-                    print("⚠️ Could not open battery settings")
     except Exception as e:
-        print(f"Battery check error: {e}")
-    
-    # Start service
-    try:
-        service = autoclass('org.mysrs.smartsrs.ServiceSrsservice')
-        mActivity = autoclass('org.kivy.android.PythonActivity').mActivity
-        service.start(mActivity, '')
-        print("✅ Service started successfully")
-    except Exception as e:
-        print(f"❌ Service start error: {e}")
+        print(f"Android setup error: {e}")
 
 # Colors
 COLOR_BG = (0.08, 0.10, 0.14, 1)
@@ -72,150 +41,172 @@ COLOR_TEXT = (0.95, 0.95, 0.95, 1)
 
 class SRSPlayer(App):
     def build(self):
-        Window.clearcolor = COLOR_BG
-        
-        app_dir = os.path.dirname(os.path.abspath(__file__))
-        self.config_path = os.path.join(app_dir, "srs_config.txt")
-        self.is_running = False
-        
-        # Main layout
-        layout = BoxLayout(orientation='vertical', padding=25, spacing=18)
-        
-        # Main title
-        title = Label(
-            text="🎯 Smart Review System",
-            size_hint=(1, 0.09),
-            font_size='28sp',
-            bold=True,
-            color=COLOR_PRIMARY
-        )
-        layout.add_widget(title)
-        
-        # Subtitle
-        subtitle = Label(
-            text="Spaced Repetition Made Easy",
-            size_hint=(1, 0.05),
-            font_size='15sp',
-            color=(0.7, 0.7, 0.7, 1)
-        )
-        layout.add_widget(subtitle)
-        
-        # Status label
-        self.status_label = Label(
-            text="📁 Select an audio file to begin",
-            size_hint=(1, 0.08),
-            font_size='17sp',
-            color=COLOR_TEXT,
-            bold=True
-        )
-        layout.add_widget(self.status_label)
-        
-        # Review schedule info
-        intervals_box = BoxLayout(orientation='vertical', size_hint=(1, 0.12), spacing=5)
-        
-        intervals_title = Label(
-            text="⏱️ Review Schedule:",
-            size_hint=(1, 0.4),
-            font_size='15sp',
-            color=COLOR_WARNING,
-            bold=True
-        )
-        intervals_box.add_widget(intervals_title)
-        
-        intervals_text = Label(
-            text="10 sec → 1 min → 5 min → 30 min → 1 hour",
-            size_hint=(1, 0.6),
-            font_size='13sp',
-            color=(0.8, 0.8, 0.8, 1)
-        )
-        intervals_box.add_widget(intervals_text)
-        
-        layout.add_widget(intervals_box)
-        
-        # File chooser
-        chooser_container = BoxLayout(size_hint=(1, 0.5), padding=5)
-        
-        self.file_chooser = FileChooserIconView(
-            path="/storage/emulated/0/",
-            filters=['*.mp3', '*.wav', '*.ogg', '*.m4a', '*.aac', '*.flac'],
-            size_hint=(1, 1)
-        )
-        chooser_container.add_widget(self.file_chooser)
-        
-        layout.add_widget(chooser_container)
-        
-        # Start/Stop button
-        self.action_button = Button(
-            text="▶️ START REVIEW",
-            size_hint=(1, 0.13),
-            background_normal='',
-            background_color=COLOR_SUCCESS,
-            font_size='24sp',
-            bold=True
-        )
-        self.action_button.bind(on_press=self.toggle_session)
-        layout.add_widget(self.action_button)
-        
-        # Important tip
-        tip_label = Label(
-            text="💡 Make sure to disable battery optimization",
-            size_hint=(1, 0.06),
-            font_size='12sp',
-            color=(0.6, 0.6, 0.6, 1),
-            italic=True
-        )
-        layout.add_widget(tip_label)
-        
-        return layout
+        try:
+            Window.clearcolor = COLOR_BG
+            
+            # Setup paths
+            if platform == 'android':
+                from android.storage import app_storage_path
+                app_dir = app_storage_path()
+            else:
+                app_dir = os.path.dirname(os.path.abspath(__file__))
+            
+            self.config_path = os.path.join(app_dir, "srs_config.txt")
+            self.is_running = False
+            
+            print(f"App directory: {app_dir}")
+            print(f"Config path: {self.config_path}")
+            
+            # Main layout
+            layout = BoxLayout(orientation='vertical', padding=20, spacing=15)
+            
+            # Title
+            title = Label(
+                text="🎯 Smart Review System",
+                size_hint=(1, 0.1),
+                font_size='26sp',
+                bold=True,
+                color=COLOR_PRIMARY
+            )
+            layout.add_widget(title)
+            
+            # Status
+            self.status_label = Label(
+                text="📁 Select an audio file to begin",
+                size_hint=(1, 0.08),
+                font_size='16sp',
+                color=COLOR_TEXT
+            )
+            layout.add_widget(self.status_label)
+            
+            # Review schedule
+            schedule_label = Label(
+                text="⏱️ Schedule: 10s → 1m → 5m → 30m → 1h",
+                size_hint=(1, 0.06),
+                font_size='14sp',
+                color=COLOR_WARNING
+            )
+            layout.add_widget(schedule_label)
+            
+            # File chooser
+            if platform == 'android':
+                default_path = "/storage/emulated/0/"
+            else:
+                default_path = os.path.expanduser("~")
+            
+            self.file_chooser = FileChooserIconView(
+                path=default_path,
+                filters=['*.mp3', '*.wav', '*.ogg', '*.m4a'],
+                size_hint=(1, 0.6)
+            )
+            layout.add_widget(self.file_chooser)
+            
+            # Action button
+            self.action_button = Button(
+                text="▶️ START REVIEW",
+                size_hint=(1, 0.12),
+                background_normal='',
+                background_color=COLOR_SUCCESS,
+                font_size='22sp',
+                bold=True
+            )
+            self.action_button.bind(on_press=self.toggle_session)
+            layout.add_widget(self.action_button)
+            
+            # Start service after UI is ready
+            if platform == 'android':
+                from kivy.clock import Clock
+                Clock.schedule_once(lambda dt: self.start_service(), 2)
+            
+            print("✅ UI built successfully")
+            return layout
+            
+        except Exception as e:
+            print(f"❌ Build error: {e}")
+            traceback.print_exc()
+            
+            # Fallback minimal UI
+            layout = BoxLayout(orientation='vertical', padding=20)
+            error_label = Label(
+                text=f"❌ Error starting app:\n{str(e)}",
+                color=(1, 0, 0, 1)
+            )
+            layout.add_widget(error_label)
+            return layout
+    
+    def start_service(self):
+        """Start service after UI is ready"""
+        try:
+            if platform != 'android':
+                return
+            
+            # Request additional permissions
+            from android.permissions import request_permissions, Permission
+            request_permissions([
+                Permission.FOREGROUND_SERVICE,
+                Permission.WAKE_LOCK,
+                Permission.POST_NOTIFICATIONS,
+            ])
+            
+            # Start service
+            service = autoclass('org.mysrs.smartsrs.ServiceSrsservice')
+            mActivity = PythonActivity.mActivity
+            service.start(mActivity, '')
+            
+            print("✅ Service started")
+            self.status_label.text = "✅ Service ready"
+            
+        except Exception as e:
+            print(f"⚠️ Service start error: {e}")
+            self.status_label.text = "⚠️ Service not available"
     
     def toggle_session(self, instance):
         """Start or stop review session"""
-        if not self.is_running:
-            # Start session
-            if self.file_chooser.selection:
-                file_path = self.file_chooser.selection[0]
-                file_name = os.path.basename(file_path)
-                
-                try:
-                    # Write file path
+        try:
+            if not self.is_running:
+                # Start
+                if self.file_chooser.selection:
+                    file_path = self.file_chooser.selection[0]
+                    file_name = os.path.basename(file_path)
+                    
+                    # Write config
                     with open(self.config_path, "w", encoding='utf-8') as f:
                         f.write(file_path)
                     
                     self.is_running = True
-                    self.action_button.text = "⏸️ STOP REVIEW"
+                    self.action_button.text = "⏸️ STOP"
                     self.action_button.background_color = COLOR_DANGER
                     
-                    # Show file name (truncated)
-                    short_name = file_name[:30] + "..." if len(file_name) > 30 else file_name
-                    self.status_label.text = f"🎵 Reviewing: {short_name}"
+                    short_name = file_name[:25] + "..." if len(file_name) > 25 else file_name
+                    self.status_label.text = f"🎵 {short_name}"
                     self.status_label.color = COLOR_SUCCESS
                     
-                    print(f"✅ Session started: {file_path}")
-                    
-                except Exception as e:
-                    print(f"❌ Error starting session: {e}")
-                    self.status_label.text = "❌ Error starting session"
-                    self.status_label.color = COLOR_DANGER
+                    print(f"✅ Started: {file_path}")
+                else:
+                    self.status_label.text = "⚠️ Select a file first"
+                    self.status_label.color = COLOR_WARNING
             else:
-                self.status_label.text = "⚠️ Please select a file first"
-                self.status_label.color = COLOR_WARNING
-        else:
-            # Stop session
-            try:
+                # Stop
                 with open(self.config_path, "w", encoding='utf-8') as f:
                     f.write("STOP")
                 
                 self.is_running = False
-                self.action_button.text = "▶️ START REVIEW"
+                self.action_button.text = "▶️ START"
                 self.action_button.background_color = COLOR_SUCCESS
-                self.status_label.text = "⏹️ Session stopped"
+                self.status_label.text = "⏹️ Stopped"
                 self.status_label.color = (0.7, 0.7, 0.7, 1)
                 
-                print("⏹️ Session stopped")
+                print("⏹️ Stopped")
                 
-            except Exception as e:
-                print(f"❌ Error stopping session: {e}")
+        except Exception as e:
+            print(f"❌ Toggle error: {e}")
+            self.status_label.text = f"❌ Error: {str(e)}"
+            self.status_label.color = COLOR_DANGER
 
 
 if __name__ == '__main__':
-    SRSPlayer().run()
+    try:
+        SRSPlayer().run()
+    except Exception as e:
+        print(f"💥 Fatal error: {e}")
+        traceback.print_exc()
