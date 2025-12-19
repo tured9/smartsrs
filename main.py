@@ -1,110 +1,71 @@
-"""
-Smart SRS - Ultimate Crash-Proof Version with Forced Timer
-Full English Interface
-"""
-
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.button import Button
+from kivy.uix.filechooser import FileChooserListView
 from kivy.uix.label import Label
-from kivy.uix.filechooser import FileChooserIconView
-from kivy.utils import platform
-from kivy.core.window import Window
-import os
+from kivy.uix.popup import Popup
+from kivy.properties import StringProperty
+from kivy.clock import Clock
+from kivy.lang import Builder
 
-if platform == 'android':
-    from jnius import autoclass
-    from android.permissions import request_permissions, Permission
-    
-    try:
-        request_permissions([
-            Permission.READ_EXTERNAL_STORAGE,
-            Permission.WRITE_EXTERNAL_STORAGE,
-            Permission.FOREGROUND_SERVICE,
-            Permission.WAKE_LOCK,
-            Permission.POST_NOTIFICATIONS,
-            Permission.SCHEDULE_EXACT_ALARM,
-            Permission.USE_EXACT_ALARM
-        ])
-    except Exception as e:
-        print(f"Permission error: {e}")
+if 'android' in App.get_running_app().get_application_name().lower():
+    from jnius import autoclass, cast
+    PythonActivity = autoclass('org.kivy.android.PythonActivity')
+    Context = autoclass('android.content.Context')
+    AlarmManager = autoclass('android.app.AlarmManager')
+    PendingIntent = autoclass('android.app.PendingIntent')
+    Intent = autoclass('android.content.Intent')
+    PowerManager = autoclass('android.os.PowerManager')
+    Service = autoclass('org.kivy.android.PythonService')
 
-# Colors
-COLOR_BG = (0.12, 0.14, 0.19, 1)
-COLOR_BTN_START = (0.0, 0.7, 0.8, 1)
-COLOR_BTN_STOP = (0.9, 0.3, 0.3, 1)
-COLOR_TEXT = (0.9, 0.9, 0.9, 1)
-COLOR_ACCENT = (0.2, 0.25, 0.3, 1)
+class AudioChooser(BoxLayout):
+    selected_file = StringProperty('')
 
-class SRSPlayer(App):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.orientation = 'vertical'
+        self.add_widget(Label(text='اختر ملف صوتي:'))
+        filechooser = FileChooserListView(filters=['*.mp3', '*.wav'])
+        filechooser.bind(selection=self.select_file)
+        self.add_widget(filechooser)
+        start_btn = Button(text='بدء المراجعة المتباعدة')
+        start_btn.bind(on_press=self.start_spaced_repetition)
+        self.add_widget(start_btn)
+
+    def select_file(self, chooser, selection):
+        if selection:
+            self.selected_file = selection[0]
+
+    def start_spaced_repetition(self, instance):
+        if not self.selected_file:
+            popup = Popup(title='خطأ', content=Label(text='يرجى اختيار ملف صوتي أولاً'), size_hint=(0.8, 0.4))
+            popup.open()
+            return
+
+        # الأوقات بالثواني
+        intervals = [10, 30, 60, 300, 1500, 1800, 3600]  # 10s, 30s, 1m, 5m, 25m, 30m, 1h
+        current_time = int(Clock.get_time() * 1000)  # milliseconds
+
+        activity = PythonActivity.mActivity
+        context = cast(Context, activity.getApplicationContext())
+        alarm_manager = cast(AlarmManager, context.getSystemService(Context.ALARM_SERVICE))
+
+        for i, interval in enumerate(intervals):
+            trigger_time = current_time + (interval * 1000)
+            intent = Intent()
+            intent.setClassName(context.getPackageName(), 'org.kivy.android.PythonService')
+            intent.putExtra('audio_file', self.selected_file)
+            pending_intent = PendingIntent.getService(context, i, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE)
+
+            # استخدم setExactAndAllowWhileIdle للدقة حتى في Doze mode
+            alarm_manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, trigger_time, pending_intent)
+
+        popup = Popup(title='نجاح', content=Label(text='تم جدولة التشغيل!'), size_hint=(0.8, 0.4))
+        popup.open()
+
+class SpacedAudioApp(App):
     def build(self):
-        Window.clearcolor = COLOR_BG
-        
-        self.is_running = False
-        
-        app_dir = os.path.dirname(os.path.abspath(__file__))
-        self.config_path = os.path.join(app_dir, "srs_config.txt")
-
-        layout = BoxLayout(orientation='vertical', padding=20, spacing=15)
-        
-        self.lbl_title = Label(text="Smart Review System", size_hint=(1, 0.1), font_size='24sp', bold=True, color=COLOR_BTN_START)
-        layout.add_widget(self.lbl_title)
-
-        self.lbl_info = Label(text="Select an audio file to begin...", size_hint=(1, 0.1), font_size='16sp', color=COLOR_TEXT)
-        layout.add_widget(self.lbl_info)
-
-        chooser_layout = BoxLayout(size_hint=(1, 0.6))
-        with chooser_layout.canvas.before:
-            Color(*COLOR_ACCENT)
-            Rectangle(pos=chooser_layout.pos, size=chooser_layout.size)
-        
-        start_path = "/storage/emulated/0/" if platform == 'android' else os.getcwd()
-        self.chooser = FileChooserIconView(
-            path=start_path, 
-            filters=['*.mp3', '*.wav', '*.ogg', '*.m4a']
-        )
-        layout.add_widget(self.chooser)
-
-        self.btn_action = Button(
-            text="START SESSION", 
-            size_hint=(1, 0.15), 
-            background_normal='', 
-            background_color=COLOR_BTN_START, 
-            font_size='20sp', 
-            bold=True,
-            color=(1,1,1,1)
-        )
-        self.btn_action.bind(on_press=self.toggle_session)
-        layout.add_widget(self.btn_action)
-
-        return layout
-
-    def toggle_session(self, instance):
-        try:
-            if not self.is_running:
-                if self.chooser.selection:
-                    file_path = self.chooser.selection[0]
-                    with open(self.config_path, "w") as f:
-                        f.write(file_path)
-                    self.is_running = True
-                    self.btn_action.text = "STOP SESSION"
-                    self.btn_action.background_color = COLOR_BTN_STOP
-                    self.lbl_info.text = "Session started!"
-                else:
-                    self.lbl_info.text = "Please select a file first!"
-            else:
-                with open(self.config_path, "w") as f:
-                    f.write("STOP")
-                self.is_running = False
-                self.btn_action.text = "START SESSION"
-                self.btn_action.background_color = COLOR_BTN_START
-                self.lbl_info.text = "Session stopped."
-        except Exception as e:
-            self.lbl_info.text = "Error: Try again"
-            print(f"Toggle error: {e}")
+        return AudioChooser()
 
 if __name__ == '__main__':
-    try:
-        SRSPlayer().run()
-    except Exception as e:
-        print(f"App run error: {e}")
+    SpacedAudioApp().run()
