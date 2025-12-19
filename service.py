@@ -1,106 +1,49 @@
-"""
-Smart SRS Service - ULTIMATE with Forced Timer Enforcement
-English Logs
-"""
+from jnius import autoclass
+from time import sleep
 
-from time import sleep, time
-from jnius import autoclass, cast
-from kivy.utils import platform
-import os
+MediaPlayer = autoclass('android.media.MediaPlayer')
+AudioManager = autoclass('android.media.AudioManager')
+PowerManager = autoclass('android.os.PowerManager')
+Context = autoclass('android.content.Context')
+Notification = autoclass('android.app.Notification')
+NotificationBuilder = autoclass('android.app.Notification$Builder')
+PythonService = autoclass('org.kivy.android.PythonService')
+PendingIntent = autoclass('android.app.PendingIntent')
+Intent = autoclass('android.content.Intent')
 
-INTERVALS = [10, 60, 300, 1800, 3600]  # 10s, 1min, 5min, 30min, 1hour
+# جعل الخدمة foreground
+context = PythonService.mService
+intent = Intent(context, PythonService.mService.getClass())
+pending_intent = PendingIntent.getActivity(context, 0, intent, 0)
+notification_builder = NotificationBuilder(context)
+notification_builder.setContentTitle('تشغيل صوت المراجعة')
+notification_builder.setContentText('جاري تشغيل الملف الصوتي...')
+notification_builder.setSmallIcon(context.getApplicationInfo().icon)
+notification_builder.setContentIntent(pending_intent)
+notification = notification_builder.build()
+context.startForeground(1, notification)
 
-def play_audio(file_path):
-    try:
-        MediaPlayer = autoclass('android.media.MediaPlayer')
-        player = MediaPlayer()
-        player.setDataSource(file_path)
-        player.prepare()
-        player.start()
-        
-        while player.isPlaying():
-            sleep(0.5)
-        
-        player.release()
-        print("Playback complete")
-        return True
-    except Exception as e:
-        print(f"Play error: {e}")
-        return False
+# اكتساب WakeLock
+pm = cast(PowerManager, context.getSystemService(Context.POWER_SERVICE))
+wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, 'spaced_audio:wakelock')
+wl.acquire()
 
-def run_service():
-    if platform == 'android':
-        try:
-            PythonService = autoclass('org.kivy.android.PythonService')
-            mService = PythonService.mService
-            Context = autoclass('android.content.Context')
-            PowerManager = autoclass('android.os.PowerManager')
-            
-            pm = mService.getSystemService(Context.POWER_SERVICE)
-            wakelock = pm.newWakeLock(1, "SmartSRS:Lock")
-            wakelock.acquire()
-            print("WakeLock acquired")
+# استخراج الملف من الintent
+audio_file = PythonService.mService.getIntent().getStringExtra('audio_file')
 
-            NotificationChannel = autoclass('android.app.NotificationChannel')
-            NotificationManager = autoclass('android.app.NotificationManager')
-            nm = mService.getSystemService(Context.NOTIFICATION_SERVICE)
-            chan = NotificationChannel("SmartSRS_CH", "Review Service", 4)
-            nm.createNotificationChannel(chan)
-            
-            NotificationBuilder = autoclass('android.app.Notification$Builder')
-            notif = NotificationBuilder(mService, "SmartSRS_CH") \
-                .setContentTitle("Smart SRS Running") \
-                .setContentText("Background reviews active") \
-                .setSmallIcon(17301659) \
-                .setOngoing(True) \
-                .build()
-            mService.startForeground(1, notif)
-            print("Foreground service started")
-        except Exception as e:
-            print(f"Service setup error: {e}")
+# تشغيل الصوت
+mPlayer = MediaPlayer()
+mPlayer.setDataSource(audio_file)
+mPlayer.setAudioStreamType(AudioManager.STREAM_ALARM)  # مثل المنبه
+mPlayer.prepare()
+mPlayer.start()
 
-    app_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(app_dir, "srs_config.txt")
-    
-    loaded_file = None
-    next_play_time = 0
-    current_step = 0
+# انتظر انتهاء الصوت
+sleep(mPlayer.getDuration() / 1000 + 1)
 
-    while True:
-        try:
-            if os.path.exists(config_path):
-                with open(config_path, "r") as f:
-                    content = f.read().strip()
-                
-                if content == "STOP":
-                    loaded_file = None
-                    os.remove(config_path)
-                    if 'wakelock' in locals() and wakelock.isHeld():
-                        wakelock.release()
-                    print("Session stopped")
-                elif content and content != loaded_file:
-                    loaded_file = content
-                    current_step = 0
-                    play_audio(loaded_file)  # Immediate play
-                    next_play_time = time() + INTERVALS[0]
-                    print("Session started")
-            if loaded_file and next_play_time > 0:
-                remaining = next_play_time - time()
-                if remaining <= 0:
-                    play_audio(loaded_file)
-                    current_step += 1
-                    if current_step < len(INTERVALS):
-                        next_play_time = time() + INTERVALS[current_step]
-                    else:
-                        loaded_file = None
-                        next_play_time = 0
-                else:
-                    # Forced timer: Check every second to enforce
-                    sleep(1)
-                    print(f"Waiting for next play: {remaining} seconds left")
-        except Exception as e:
-            print(f"Loop error: {e}")
-            sleep(1)  # Retry after 1 second
+# تحرير الموارد
+mPlayer.release()
+wl.release()
 
-if __name__ == '__main__':
-    run_service()
+# إيقاف الخدمة
+context.stopSelf()
