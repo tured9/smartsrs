@@ -1,5 +1,5 @@
 """
-Smart SRS Service - ULTIMATE with Forced Timer
+Smart SRS Service - ULTIMATE with Forced Timer Enforcement
 English Logs
 """
 
@@ -8,7 +8,7 @@ from jnius import autoclass, cast
 from kivy.utils import platform
 import os
 
-INTERVALS = [10, 60, 300, 1800, 3600]  # Customize as needed
+INTERVALS = [10, 60, 300, 1800, 3600]  # 10s, 1min, 5min, 30min, 1hour
 
 def play_audio(file_path):
     try:
@@ -22,6 +22,7 @@ def play_audio(file_path):
             sleep(0.5)
         
         player.release()
+        print("Playback complete")
         return True
     except Exception as e:
         print(f"Play error: {e}")
@@ -29,29 +30,34 @@ def play_audio(file_path):
 
 def run_service():
     if platform == 'android':
-        PythonService = autoclass('org.kivy.android.PythonService')
-        mService = PythonService.mService
-        Context = autoclass('android.content.Context')
-        PowerManager = autoclass('android.os.PowerManager')
-        
-        pm = mService.getSystemService(Context.POWER_SERVICE)
-        wakelock = pm.newWakeLock(1, "SmartSRS:Lock")
-        wakelock.acquire()
+        try:
+            PythonService = autoclass('org.kivy.android.PythonService')
+            mService = PythonService.mService
+            Context = autoclass('android.content.Context')
+            PowerManager = autoclass('android.os.PowerManager')
+            
+            pm = mService.getSystemService(Context.POWER_SERVICE)
+            wakelock = pm.newWakeLock(1, "SmartSRS:Lock")
+            wakelock.acquire()
+            print("WakeLock acquired")
 
-        NotificationChannel = autoclass('android.app.NotificationChannel')
-        NotificationManager = autoclass('android.app.NotificationManager')
-        nm = mService.getSystemService(Context.NOTIFICATION_SERVICE)
-        chan = NotificationChannel("SmartSRS_CH", "Review Service", 4)
-        nm.createNotificationChannel(chan)
-        
-        NotificationBuilder = autoclass('android.app.Notification$Builder')
-        notif = NotificationBuilder(mService, "SmartSRS_CH") \
-            .setContentTitle("Smart SRS Running") \
-            .setContentText("Background reviews active") \
-            .setSmallIcon(17301659) \
-            .setOngoing(True) \
-            .build()
-        mService.startForeground(1, notif)
+            NotificationChannel = autoclass('android.app.NotificationChannel')
+            NotificationManager = autoclass('android.app.NotificationManager')
+            nm = mService.getSystemService(Context.NOTIFICATION_SERVICE)
+            chan = NotificationChannel("SmartSRS_CH", "Review Service", 4)
+            nm.createNotificationChannel(chan)
+            
+            NotificationBuilder = autoclass('android.app.Notification$Builder')
+            notif = NotificationBuilder(mService, "SmartSRS_CH") \
+                .setContentTitle("Smart SRS Running") \
+                .setContentText("Background reviews active") \
+                .setSmallIcon(17301659) \
+                .setOngoing(True) \
+                .build()
+            mService.startForeground(1, notif)
+            print("Foreground service started")
+        except Exception as e:
+            print(f"Service setup error: {e}")
 
     app_dir = os.path.dirname(os.path.abspath(__file__))
     config_path = os.path.join(app_dir, "srs_config.txt")
@@ -61,37 +67,40 @@ def run_service():
     current_step = 0
 
     while True:
-        if os.path.exists(config_path):
-            try:
+        try:
+            if os.path.exists(config_path):
                 with open(config_path, "r") as f:
                     content = f.read().strip()
                 
                 if content == "STOP":
                     loaded_file = None
                     os.remove(config_path)
-                    if wakelock.isHeld():
+                    if 'wakelock' in locals() and wakelock.isHeld():
                         wakelock.release()
+                    print("Session stopped")
                 elif content and content != loaded_file:
                     loaded_file = content
                     current_step = 0
                     play_audio(loaded_file)  # Immediate play
                     next_play_time = time() + INTERVALS[0]
-            except:
-                pass
-
-        if loaded_file and next_play_time > 0:
-            remaining = next_play_time - time()
-            if remaining <= 0:
-                play_audio(loaded_file)
-                current_step += 1
-                if current_step < len(INTERVALS):
-                    next_play_time = time() + INTERVALS[current_step]
+                    print("Session started")
+            if loaded_file and next_play_time > 0:
+                remaining = next_play_time - time()
+                if remaining <= 0:
+                    play_audio(loaded_file)
+                    current_step += 1
+                    if current_step < len(INTERVALS):
+                        next_play_time = time() + INTERVALS[current_step]
+                    else:
+                        loaded_file = None
+                        next_play_time = 0
                 else:
-                    loaded_file = None
-                    next_play_time = 0
-            else:
-                # Forced timer check every second to enforce
-                sleep(1)
+                    # Forced timer: Check every second to enforce
+                    sleep(1)
+                    print(f"Waiting for next play: {remaining} seconds left")
+        except Exception as e:
+            print(f"Loop error: {e}")
+            sleep(1)  # Retry after 1 second
 
 if __name__ == '__main__':
     run_service()
